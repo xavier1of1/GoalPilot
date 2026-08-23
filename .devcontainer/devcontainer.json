@@ -1,0 +1,30 @@
+{
+  "name": "GoalPilot Local MVP",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "workspaceFolder": "/workspaces/GoalPilot",
+  "remoteUser": "node",
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/workspaces/GoalPilot,type=bind,consistency=cached"
+  ],
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+  "postCreateCommand": "corepack enable && pnpm install --frozen-lockfile",
+  "containerEnv": {
+    "GOALPILOT_DEVCONTAINER": "true"
+  },
+  "forwardPorts": [3000, 5173, 5432],
+  "portsAttributes": {
+    "3000": { "label": "GoalPilot API" },
+    "5173": { "label": "GoalPilot Web" },
+    "5432": { "label": "GoalPilot PostgreSQL" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode", "ms-playwright.playwright"]
+    }
+  }
+}

@@ -1,0 +1,33 @@
+# ADR 0002: Deterministic illustrative financial policy
+
+- Status: accepted for the local MVP
+- Date: 2026-08-23
+
+## Decisions
+
+- Money crosses boundaries and is stored as integer cents. Decimal arithmetic is used internally;
+  posting rounds once to cents with half-even rounding.
+- Deposit APY uses `(1 + APY)^(1/365) - 1`. Contributions post at the beginning of their effective
+  date and earn that day's modeled interest. Accrued deposit interest posts at calendar month-end and
+  at the target date.
+- Monthly schedules preserve the chosen day; a month-end start remains month-end. Weekly and
+  biweekly schedules preserve weekday.
+- Variable HYSA yield is a buffer and never lowers the zero-interest required installment. Fixed CD
+  and Treasury maturity models may show a lower interest-adjusted comparison installment because
+  their versioned term is fixed for the illustrated horizon. The zero-interest baseline remains
+  visually primary.
+- CD lots use 180-day terms and Treasury lots use 91-day terms. Only whole modeled maturities ending
+  by the goal date earn interest; no secondary-market sale or early withdrawal is assumed.
+- Assumptions older than 365 days are stale and cannot produce a new recommendation. An already
+  activated account retains its immutable assumption snapshot and displays a stale warning.
+- `confidence=expected` is the only MVP value. Additional scenarios are deferred until policy is
+  defined; the field remains version-compatible without fabricating behavior.
+- Initial saved money becomes an opening-principal ledger entry at activation. Pending and failed
+  contributions do not affect available balance. Posted signed monetary entries alone affect it.
+- Account deletion removes user financial records and sessions; retained security audit events are
+  irreversibly pseudonymized and contain no goal name, note, email, or amount.
+
+## Rationale
+
+These rules choose conservative displayed installments, explicit maturity behavior, and replayable
+calendar arithmetic while avoiding any implication that illustrative rates are guaranteed.

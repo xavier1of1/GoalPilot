@@ -1,0 +1,36 @@
+{
+  "name": "@goalpilot/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@fastify/cookie": "11.1.2",
+    "@fastify/cors": "11.3.0",
+    "@fastify/helmet": "13.1.1",
+    "@fastify/rate-limit": "11.2.0",
+    "@fastify/sensible": "6.0.5",
+    "@fastify/swagger": "9.8.1",
+    "@fastify/swagger-ui": "6.1.1",
+    "@goalpilot/auth": "workspace:*",
+    "@goalpilot/contracts": "workspace:*",
+    "@goalpilot/data-access": "workspace:*",
+    "@goalpilot/domain": "workspace:*",
+    "@goalpilot/observability": "workspace:*",
+    "@goalpilot/provider-ports": "workspace:*",
+    "@goalpilot/provider-simulators": "workspace:*",
+    "fastify": "5.11.3",
+    "fastify-type-provider-zod": "7.0.0",
+    "pino": "10.3.1",
+    "ulid": "3.0.2",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1"
+  }
+}
