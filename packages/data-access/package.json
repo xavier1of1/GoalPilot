@@ -14,6 +14,6 @@
     "ulid": "3.0.2"
   },
   "devDependencies": {
-    "@types/node": "24.10.1"
+    "@types/node": "26.2.0"
   }
 }
