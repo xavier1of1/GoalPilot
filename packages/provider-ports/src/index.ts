@@ -35,7 +35,7 @@ export interface GoalAccountProvider {
     readonly asOfDate: string;
     readonly nextContributionDate: string | null;
   }): Promise<{ readonly accountId: string }>;
-  summary(userId: string, goalId: string): Promise<AccountSummaryDto | null>;
+  summary(userId: string, goalId: string, asOfDate: string): Promise<AccountSummaryDto | null>;
   getActivity(userId: string, goalId: string): Promise<readonly ActivityDto[]>;
 }
 

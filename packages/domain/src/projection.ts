@@ -161,20 +161,14 @@ function dailyDepositProjection(input: ProjectionInput): ProjectionNumbers {
 }
 
 function maturityProjection(input: ProjectionInput): ProjectionNumbers {
-  if (input.goal.currentSavedCents >= input.goal.targetAmountCents) {
-    return {
-      principalCents: input.goal.currentSavedCents,
-      interestCents: 0,
-      endingBalanceCents: input.goal.currentSavedCents,
-      completionDate: input.goal.targetDate,
-    };
-  }
   const contributionDates = new Set(
-    generateContributionDates(
-      input.asOfDate,
-      input.goal.targetDate,
-      input.goal.contributionCadence,
-    ),
+    input.goal.currentSavedCents >= input.goal.targetAmountCents
+      ? []
+      : generateContributionDates(
+          input.asOfDate,
+          input.goal.targetDate,
+          input.goal.contributionCadence,
+        ),
   );
   const annualMultiplier = new Decimal(input.assumption.apyBasisPoints).dividedBy(10_000).plus(1);
   const lots: {

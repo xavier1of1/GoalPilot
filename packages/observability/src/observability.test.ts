@@ -27,4 +27,10 @@ describe('safe logging', () => {
     expect(context).toEqual({ errorType: 'TypeError' });
     expect(JSON.stringify(context)).not.toContain('do-not-log');
   });
+
+  it('does not trust a mutable error name', () => {
+    const error = new Error('safe message');
+    error.name = 'postgres://user:do-not-log@localhost/private';
+    expect(safeErrorContext(error)).toEqual({ errorType: 'Error' });
+  });
 });

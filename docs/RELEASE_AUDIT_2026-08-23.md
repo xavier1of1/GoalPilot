@@ -1,8 +1,16 @@
 # GoalPilot Local MVP Independent Release Audit
 
-**Audit date:** 2026-08-23  
-**Audited revision:** `e17753a` (`master`)  
-**Scope:** approved local-first MVP only; M19 and AWS work excluded  
+**Audit date:** 2026-08-23
+
+**Baseline revision:** `e17753a`
+
+**Prior correction revision:** `8571628` (`Refinement pass`)
+
+**Named checkpoint:** the commit containing this report, with subject
+`fix: harden GoalPilot after independent release audit`
+
+**Scope:** approved local-first MVP only; M19 and AWS work excluded
+
 **Initial-audit state:** findings below were recorded before product source changes
 
 ## Verdict
@@ -190,28 +198,50 @@ accessibility, and reproducibility defects remain actionable inside the approved
 
 ## Correction and final-verification record
 
-All actionable findings above were corrected inside the approved local scope:
+The first fresh revalidation of `8571628` did **not** reproduce the prior PASS claim: an Autopilot
+case exceeded Vitest's five-second default, unfinished work polluted later tests, and the documented
+`test:integration` command used an unsupported Vitest option. Static review also found partial
+financial, provider-clock, ledger-provenance, logging, and accessibility corrections. Those failures
+are preserved below as AUD-016 through AUD-022; they were corrected before the named checkpoint.
 
-| Finding | Resolution evidence                                                                 |
-| ------- | ----------------------------------------------------------------------------------- |
-| AUD-001 | strict scrypt grammar plus malformed/unsupported hash regressions                   |
-| AUD-002 | normalized database identity, exact role names, and safety unit tests               |
-| AUD-003 | fixed-term funded openings remain active/locked through the target boundary         |
-| AUD-004 | deposit posting restricted to month-end/target date in projection and Autopilot     |
-| AUD-005 | migration 004 plus cross-goal, assumption/vehicle, reversal, and period tests       |
-| AUD-006 | `pnpm verify` now executes coverage and enforces thresholds                         |
-| AUD-007 | raw unexpected exceptions removed from handler logs and logger regression added     |
-| AUD-008 | API clock/rates injected; simulators depend on a structural store contract          |
-| AUD-009 | Playwright API/web moved to dedicated 3100/5273 test ports                          |
-| AUD-010 | every protected goal mutation has a non-owner 404 assertion                         |
-| AUD-011 | dialog-local associated error, invalid state, focus movement, component/E2E tests   |
-| AUD-012 | Axe and overflow checks extended across auth, results, dashboard, and dialog states |
-| AUD-013 | exact Cash/HYSA/CD/Treasury, half-even, and maturity vectors added                  |
-| AUD-014 | undocumented legacy export GET removed and regression-locked at 404                 |
-| AUD-015 | exact filenames/checksums/tables/reviewed-catalog verification added                |
+| ID      | Severity | Status    | Correction                                                                                        | Regression test or proof                                  | Command                                            | Evidence                                                                                    |
+| ------- | -------- | --------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| AUD-001 | Critical | Corrected | Strictly parse the supported scrypt record before fixed-length derivation.                        | Malformed and unsupported stored-hash vectors             | `corepack pnpm verify`                             | `packages/auth/src/index.test.ts`                                                           |
+| AUD-002 | High     | Corrected | Normalize exact database identity and require distinct test/development DBs.                      | Equivalent-loopback and wrong-role database vectors       | `corepack pnpm verify`                             | `tests/runtime-config.test.ts`, `scripts/db-test-create.ts`                                 |
+| AUD-003 | High     | Corrected | Keep fixed-term funds locked while projecting every complete maturity.                            | Funded-opening domain and Autopilot target-boundary cases | `corepack pnpm test:integration`                   | `packages/domain/src/projection.test.ts`, `apps/api/src/demo-autopilot.integration.test.ts` |
+| AUD-004 | High     | Corrected | Post deposit interest only at month-end or target-date boundaries.                                | One-cent early target-crossing vectors                    | `corepack pnpm verify`                             | `packages/domain/src/projection.test.ts`, `apps/api/src/demo-autopilot.integration.test.ts` |
+| AUD-005 | High     | Corrected | Add composite same-goal/account/assumption provenance constraints.                                | Negative relational database cases                        | `corepack pnpm test:integration`                   | migrations 004–005 and `packages/data-access/src/database.integration.test.ts`              |
+| AUD-006 | High     | Corrected | Make coverage execution and thresholds part of the canonical gate.                                | Gate emits and enforces V8 coverage                       | `corepack pnpm verify`                             | `package.json`, `vitest.config.ts`                                                          |
+| AUD-007 | Medium   | Corrected | Log only a whitelisted error classification and correlation context.                              | Secret message, stack, and malicious-name cases           | `corepack pnpm verify`                             | `packages/observability/src/observability.test.ts`                                          |
+| AUD-008 | Medium   | Corrected | Inject clock/rates, use explicit time in summaries/events, retain plan snapshots.                 | Replacement-clock and unpersisted-catalog-v2 case         | `corepack pnpm test:integration`                   | `apps/api/src/auth-goals.integration.test.ts`, provider ports/simulators                    |
+| AUD-009 | Medium   | Corrected | Give Playwright dedicated API/web ports and proxy/origin settings.                                | E2E starts beside the documented developer ports          | `PLAYWRIGHT_CHANNEL=chrome corepack pnpm test:e2e` | `playwright.config.ts`, `apps/web/vite.config.ts`                                           |
+| AUD-010 | Medium   | Corrected | Assert indistinguishable 404 for every protected goal mutation.                                   | Cross-owner route matrix                                  | `corepack pnpm test:integration`                   | `apps/api/src/auth-goals.integration.test.ts`                                               |
+| AUD-011 | Medium   | Corrected | Separate field validation from operation errors and move focus appropriately.                     | Client-validation and rejected-operation component cases  | `corepack pnpm verify`                             | `apps/web/src/pages/DashboardPage.test.tsx`                                                 |
+| AUD-012 | Medium   | Corrected | Run Axe on principal states and overflow checks at required widths.                               | Landing, anonymous preview, results, dashboard, dialog    | `PLAYWRIGHT_CHANNEL=chrome corepack pnpm test:e2e` | `tests/e2e/goalpilot.spec.ts`                                                               |
+| AUD-013 | Medium   | Corrected | Lock exact four-vehicle and cent-rounded maturity golden vectors.                                 | Cash/HYSA/CD/Treasury, half-even, rollover vectors        | `corepack pnpm verify`                             | `packages/domain/src/projection.test.ts`                                                    |
+| AUD-014 | Medium   | Corrected | Remove the legacy export GET and retain the lifecycle POST.                                       | Legacy route remains 404                                  | `corepack pnpm test:integration`                   | `apps/api/src/auth-goals.integration.test.ts`                                               |
+| AUD-015 | Medium   | Corrected | Compare exact ordered migration checksums, tables, and reviewed catalog.                          | Database drift verifier                                   | `corepack pnpm db:verify`                          | `scripts/db-verify.ts`                                                                      |
+| AUD-016 | High     | Corrected | Add justified long-case timeouts, activation-failure cleanup, and a supported integration filter. | Fresh integration suite run                               | `corepack pnpm test:integration`                   | 3 files / 21 tests passed twice after correction                                            |
+| AUD-017 | High     | Corrected | Remove the funded fixed-term early return and stop already-funded contributions.                  | Exact funded CD/Treasury outputs                          | `corepack pnpm verify`                             | 26,623 and 25,429 cents modeled interest respectively                                       |
+| AUD-018 | Medium   | Corrected | Post an overdue contribution on its actual retry date, not its missed due date.                   | Pause/resume chronology assertion                         | `corepack pnpm test:integration`                   | resumed contribution effective 2026-10-01                                                   |
+| AUD-019 | Medium   | Corrected | Enforce exact reversal negation and interest-posting discriminator/date semantics.                | Self, chained, non-negating, wrong-type/date cases        | `corepack pnpm test:integration`                   | `202608230005_ledger_semantic_integrity.sql`                                                |
+| AUD-020 | Medium   | Corrected | Make injected time authoritative and never reproject an activated plan with the current catalog.  | Clock-vs-DB and catalog-v2 regression                     | `corepack pnpm test:integration`                   | stored `demo-2026-08-v1` survives replacement catalog                                       |
+| AUD-021 | Medium   | Corrected | Treat network/server contribution failures as operation errors, not invalid amounts.              | Rejected API component case                               | `corepack pnpm verify`                             | operation alert receives focus; amount remains valid                                        |
+| AUD-022 | Medium   | Corrected | Add the anonymous preview journey and narrow responsive evidence wording.                         | Signed-out plan comparison with no persisted goal         | `PLAYWRIGHT_CHANNEL=chrome corepack pnpm test:e2e` | 3/3 Chrome journeys passed                                                                  |
 
 The expanded browser checks additionally discovered and corrected a 1.05:1 header sign-in contrast
 failure and a 360-pixel dashboard overflow. The failed discovery runs are not represented as passes.
+
+### Checkpoint revalidation failures preserved
+
+| Command                                      | Result before final pass                                                                  |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| first fresh `corepack pnpm verify`           | FAIL; 3 failed / 61 passed because a five-second Autopilot timeout leaked unfinished work |
+| first fresh `corepack pnpm test:integration` | FAIL; Vitest 4 rejected the obsolete `--include` option                                   |
+| first post-correction `corepack pnpm verify` | FAIL after 67/67 tests and builds; local developer DB had not yet applied migration 005   |
+
+Migration 005 was then applied non-destructively to `goalpilot_local`; no developer database reset
+was performed.
 
 ### Final commands actually executed
 
@@ -219,11 +249,12 @@ failure and a 360-pixel dashboard overflow. The failed discovery runs are not re
 | -------------------------------------------------------- | -------------------------------------------------------------------- |
 | `corepack pnpm run setup`                                | PASS; migration 004 applied non-destructively and diagnostics passed |
 | `corepack pnpm run doctor`                               | PASS                                                                 |
-| repeated `corepack pnpm db:migrate`                      | PASS; database already current                                       |
-| `corepack pnpm db:verify`                                | PASS; 4 checksummed migrations, 15 tables, 4 assumptions             |
-| `corepack pnpm verify`                                   | PASS; 13 files, 64 tests, coverage/build/security/SBOM gates passed  |
-| coverage within `pnpm verify`                            | PASS; API 91.37%, data 94.58%, domain 95.94% lines                   |
-| `PLAYWRIGHT_CHANNEL=chrome corepack pnpm test:e2e`       | PASS; 2/2 journeys                                                   |
+| repeated `corepack pnpm db:migrate`                      | PASS; migration 005 applied once, then database already current      |
+| `corepack pnpm db:verify`                                | PASS; 5 checksummed migrations, 15 tables, 4 assumptions             |
+| `corepack pnpm test:integration`                         | PASS; 3 files, 21 tests from a fresh isolated test database          |
+| `corepack pnpm verify`                                   | PASS; 13 files, 67 tests, coverage/build/security/SBOM gates passed  |
+| coverage within `pnpm verify`                            | PASS; API 91.34%, data 94.60%, domain 95.89% lines                   |
+| `PLAYWRIGHT_CHANNEL=chrome corepack pnpm test:e2e`       | PASS; 3/3 journeys, including anonymous preview                      |
 | post-change Dev Container Docker build and runtime probe | PASS                                                                 |
 | full VS Code Dev Container attach/open                   | NOT EXECUTED; CLI unavailable                                        |
 

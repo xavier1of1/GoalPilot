@@ -1,7 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ulid } from 'ulid';
 
+import type { VehicleAssumption } from '@goalpilot/contracts';
 import { createDatabaseClient, type DatabaseClient } from '@goalpilot/data-access';
+import { illustrativeAssumptions } from '@goalpilot/domain';
+import { ControlledApplicationClock } from '@goalpilot/provider-simulators';
 
 import { buildApp } from './app.js';
 import { loadConfiguration } from './config.js';
@@ -27,11 +30,20 @@ describe('authenticated goal API integration', () => {
   let alex: AuthenticatedSession;
   let sam: AuthenticatedSession;
   let goalId = '';
+  let clock: ControlledApplicationClock;
+  let rateCatalog: readonly VehicleAssumption[];
   const runKey = ulid();
 
   beforeAll(async () => {
     database = createDatabaseClient(configuration.DATABASE_URL, 3);
-    app = await buildApp({ configuration: { ...configuration, LOG_LEVEL: 'silent' }, database });
+    clock = new ControlledApplicationClock('2026-08-23');
+    rateCatalog = illustrativeAssumptions;
+    app = await buildApp({
+      configuration: { ...configuration, LOG_LEVEL: 'silent' },
+      database,
+      clock,
+      rateProvider: { getCatalog: () => Promise.resolve(rateCatalog) },
+    });
     const login = async (email: string, password: string): Promise<AuthenticatedSession> => {
       const response = await app.inject({
         method: 'POST',
@@ -354,7 +366,7 @@ describe('authenticated goal API integration', () => {
       status: 'purchase_ready',
       principalContributedCents: 600_000,
       currentLedgerBalanceCents: 600_000,
-      projectedCompletionDate: '2026-08-23',
+      projectedCompletionDate: '2027-07-23',
     });
     const activity = await app.inject({
       method: 'GET',
@@ -451,6 +463,118 @@ describe('authenticated goal API integration', () => {
     }
     durations.sort((left, right) => left - right);
     expect(durations[Math.ceil(durations.length * 0.95) - 1]).toBeLessThan(1_000);
+  });
+
+  it('uses the injected clock while retaining the activated assumption snapshot', async () => {
+    const registration = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      headers: { origin: configuration.WEB_ORIGIN },
+      payload: {
+        email: `clock-${runKey.toLowerCase()}@example.test`,
+        password: 'GoalPilot-Clock-2026!',
+        displayName: 'Clock Boundary Test',
+      },
+    });
+    expect(registration.statusCode, registration.body).toBe(201);
+    const session = {
+      cookie: cookiesFrom(registration),
+      csrf: registration.json<{ csrfToken: string }>().csrfToken,
+    };
+
+    try {
+      const created = await app.inject({
+        method: 'POST',
+        url: '/api/v1/goals',
+        headers: {
+          origin: configuration.WEB_ORIGIN,
+          cookie: session.cookie,
+          'x-csrf-token': session.csrf,
+          'idempotency-key': `clock-goal-${runKey}`,
+        },
+        payload: {
+          name: 'Injected clock boundary',
+          targetAmountCents: 600_000,
+          currentSavedCents: 100_000,
+          targetDate: '2028-08-23',
+          recurringContributionCents: 45_000,
+          contributionCadence: 'monthly',
+          liquidityNeed: 'anytime',
+          preservationPreference: 'required',
+          confidence: 'expected',
+        },
+      });
+      expect(created.statusCode, created.body).toBe(201);
+      const clockGoalId = created.json<{ id: string }>().id;
+      const activated = await app.inject({
+        method: 'POST',
+        url: `/api/v1/goals/${clockGoalId}/activate`,
+        headers: {
+          origin: configuration.WEB_ORIGIN,
+          cookie: session.cookie,
+          'x-csrf-token': session.csrf,
+        },
+        payload: { vehicleCode: 'hysa' },
+      });
+      expect(activated.statusCode, activated.body).toBe(201);
+      const activatedAccount = activated.json<{
+        account: { projectedCompletionDate: string | null };
+      }>().account;
+
+      rateCatalog = illustrativeAssumptions.map((assumption) => ({
+        ...assumption,
+        assumptionVersion: 'unpersisted-test-v2',
+        apyBasisPoints: assumption.vehicleCode === 'hysa' ? 10_000 : assumption.apyBasisPoints,
+      }));
+      await clock.advanceTo('2027-08-24');
+      const detail = await app.inject({
+        method: 'GET',
+        url: `/api/v1/goals/${clockGoalId}`,
+        headers: { cookie: session.cookie },
+      });
+      expect(detail.statusCode, detail.body).toBe(200);
+      expect(detail.json()).toMatchObject({
+        applicationDate: '2027-08-24',
+        account: {
+          assumptionVersion: 'demo-2026-08-v1',
+          assumptionIsStale: true,
+          projectedCompletionDate: activatedAccount.projectedCompletionDate,
+        },
+      });
+
+      const paused = await app.inject({
+        method: 'POST',
+        url: `/api/v1/goals/${clockGoalId}/pause`,
+        headers: {
+          origin: configuration.WEB_ORIGIN,
+          cookie: session.cookie,
+          'x-csrf-token': session.csrf,
+        },
+      });
+      expect(paused.statusCode, paused.body).toBe(200);
+      const activity = await app.inject({
+        method: 'GET',
+        url: `/api/v1/goals/${clockGoalId}/ledger`,
+        headers: { cookie: session.cookie },
+      });
+      expect(
+        activity
+          .json<{ activity: readonly { type: string; effectiveDate: string }[] }>()
+          .activity.find((entry) => entry.type === 'paused'),
+      ).toMatchObject({ effectiveDate: '2027-08-24' });
+    } finally {
+      rateCatalog = illustrativeAssumptions;
+      const deletion = await app.inject({
+        method: 'POST',
+        url: '/api/v1/account-deletion',
+        headers: {
+          origin: configuration.WEB_ORIGIN,
+          cookie: session.cookie,
+          'x-csrf-token': session.csrf,
+        },
+      });
+      expect(deletion.statusCode, deletion.body).toBe(200);
+    }
   });
 
   it('serves readiness, catalog, session refresh, and logout flows', async () => {

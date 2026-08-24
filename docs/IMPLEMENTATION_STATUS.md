@@ -28,11 +28,11 @@ uses port 55432. The committed clean-checkout default remains `localhost:5432`.
 | `docker build --file .devcontainer/Dockerfile --tag goalpilot-devcontainer-check:local .` | PASS                                                                                                          |
 | Dev Container runtime probe                                                               | PASS; Node 24.19.0, pnpm 11.22.0, Git 2.39.5, PostgreSQL client 15.19                                         |
 | `pnpm dev` plus HTTP probes                                                               | PASS; web 200, live/ready both healthy, API docs 200                                                          |
-| non-destructive developer migrate twice, seed, verify                                     | PASS; 4 checksum-verified migrations, 15 public tables, and 4 reviewed assumptions                            |
+| non-destructive developer migrate twice, seed, verify                                     | PASS; 5 checksum-verified migrations, 15 public tables, and 4 reviewed assumptions                            |
 | `pnpm demo:advance --days 30` then same-date replay                                       | PASS; 2026-08-23 to 2026-09-22, no failures, replay produced no work                                          |
-| `pnpm verify`                                                                             | PASS; format, lint, types, 64 tests with coverage gates, builds, DB verification, scans/audit, CycloneDX SBOM |
-| coverage inside `pnpm verify`                                                             | PASS; API 91.37%, data 94.58%, domain 95.94% lines; domain branches 86.60%                                    |
-| `PLAYWRIGHT_CHANNEL=chrome pnpm test:e2e`                                                 | PASS; 2/2 journeys; principal states checked with Axe and 360/768/1024/1440 overflow checks                   |
+| `corepack pnpm verify`                                                                    | PASS; format, lint, types, 67 tests with coverage gates, builds, DB verification, scans/audit, CycloneDX SBOM |
+| coverage inside `corepack pnpm verify`                                                    | PASS; API 91.34%, data 94.60%, domain 95.89% lines; domain branches 86.60%                                    |
+| `PLAYWRIGHT_CHANNEL=chrome corepack pnpm test:e2e`                                        | PASS; 3/3 journeys; principal states checked with Axe and 360/768/1024/1440 overflow checks                   |
 
 Production bundles built successfully: web JavaScript 409.27 kB (124.47 kB gzip), web CSS 21.58
 kB (5.88 kB gzip), and compiled Fastify/package outputs. The production dependency audit reported

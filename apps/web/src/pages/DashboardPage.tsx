@@ -41,9 +41,11 @@ export function DashboardPage(): React.JSX.Element {
   const [amount, setAmount] = useState('100');
   const [effectiveDate, setEffectiveDate] = useState('2026-08-23');
   const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [contributionError, setContributionError] = useState<string | null>(null);
+  const [amountError, setAmountError] = useState<string | null>(null);
+  const [contributionOperationError, setContributionOperationError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
+  const contributionOperationErrorRef = useRef<HTMLParagraphElement>(null);
   const contributionKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (detailQuery.data?.applicationDate !== undefined)
@@ -88,18 +90,19 @@ export function DashboardPage(): React.JSX.Element {
     },
     onSuccess: async () => {
       contributionKeyRef.current = null;
-      setContributionError(null);
+      setAmountError(null);
+      setContributionOperationError(null);
       setActionMessage('Your simulated contribution posted successfully.');
       dialogRef.current?.close();
       await refresh();
     },
     onError: (mutationError) => {
-      setContributionError(
+      setContributionOperationError(
         mutationError instanceof Error
           ? mutationError.message
           : 'The simulated contribution could not be posted.',
       );
-      requestAnimationFrame(() => amountRef.current?.focus());
+      requestAnimationFrame(() => contributionOperationErrorRef.current?.focus());
     },
   });
   const error = [
@@ -130,7 +133,8 @@ export function DashboardPage(): React.JSX.Element {
             className="button"
             type="button"
             onClick={() => {
-              setContributionError(null);
+              setAmountError(null);
+              setContributionOperationError(null);
               dialogRef.current?.showModal();
             }}
           >
@@ -394,24 +398,34 @@ export function DashboardPage(): React.JSX.Element {
                 ref={amountRef}
                 value={amount}
                 inputMode="decimal"
-                aria-invalid={contributionError === null ? undefined : true}
-                aria-describedby={contributionError === null ? undefined : 'contribution-error'}
+                aria-invalid={amountError === null ? undefined : true}
+                aria-describedby={amountError === null ? undefined : 'contribution-amount-error'}
                 onChange={(event) => {
                   setAmount(event.target.value);
-                  setContributionError(null);
+                  setAmountError(null);
                 }}
               />
             </span>
           </label>
-          {contributionError !== null && (
-            <p className="field-error" id="contribution-error" role="alert">
-              {contributionError}
+          {amountError !== null && (
+            <p className="field-error" id="contribution-amount-error" role="alert">
+              {amountError}
             </p>
           )}
           <label htmlFor="contribution-effective-date">
             Effective date
             <input id="contribution-effective-date" type="date" value={effectiveDate} readOnly />
           </label>
+          {contributionOperationError !== null && (
+            <p
+              className="field-error"
+              ref={contributionOperationErrorRef}
+              role="alert"
+              tabIndex={-1}
+            >
+              {contributionOperationError}
+            </p>
+          )}
           <div className="dialog-actions">
             <button
               className="text-button"
@@ -429,10 +443,11 @@ export function DashboardPage(): React.JSX.Element {
                   const amountCents = dollarsToCents(amount);
                   if (amountCents < 1 || amountCents > 100_000_000)
                     throw new Error('Enter an amount between $0.01 and $1,000,000.');
-                  setContributionError(null);
+                  setAmountError(null);
+                  setContributionOperationError(null);
                   contributionMutation.mutate();
                 } catch (validationError) {
-                  setContributionError(
+                  setAmountError(
                     validationError instanceof Error
                       ? validationError.message
                       : 'Enter a valid dollar amount.',

@@ -52,6 +52,7 @@ export async function processDemoAutopilot(
       try {
         const result = await repository.processScheduledContribution({
           account,
+          processingDate,
           nextContributionDate: nextContributionDate(account),
         });
         if (result.posted) contributionsPosted += 1;

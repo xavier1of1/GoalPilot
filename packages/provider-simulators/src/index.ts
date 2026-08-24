@@ -54,7 +54,11 @@ export interface SimulationStore {
     readonly asOfDate: string;
     readonly nextContributionDate: string | null;
   }): Promise<string>;
-  getAccountSummary(userId: string, goalId: string): Promise<AccountSummaryDto | null>;
+  getAccountSummary(
+    userId: string,
+    goalId: string,
+    asOfDate: string,
+  ): Promise<AccountSummaryDto | null>;
   getActivity(userId: string, goalId: string): Promise<readonly ActivityDto[]>;
   postContribution(input: {
     readonly userId: string;
@@ -133,8 +137,8 @@ export class SimulatedGoalAccountProvider implements GoalAccountProvider {
     return { accountId: await this.repository.activateGoal(input) };
   }
 
-  public summary(userId: string, goalId: string) {
-    return this.repository.getAccountSummary(userId, goalId);
+  public summary(userId: string, goalId: string, asOfDate: string) {
+    return this.repository.getAccountSummary(userId, goalId, asOfDate);
   }
 
   public getActivity(userId: string, goalId: string) {

@@ -33,6 +33,7 @@ describe('PostgreSQL migration and ownership constraints', () => {
       '202608230002_allow_ledger_cascade_purge.sql',
       '202608230003_financial_integrity.sql',
       '202608230004_relational_integrity.sql',
+      '202608230005_ledger_semantic_integrity.sql',
     ]);
     expect(tables.map((row) => row.table_name)).toEqual(
       expect.arrayContaining([
@@ -308,7 +309,7 @@ describe('PostgreSQL migration and ownership constraints', () => {
           '2026-08-24', 'Invalid cross-account reversal', ${first.ledgerId}
         )
       `,
-    ).rejects.toMatchObject({ code: '23503' });
+    ).rejects.toThrow('same account');
     await expect(
       database`
         INSERT INTO interest_posting_periods (
@@ -317,17 +318,91 @@ describe('PostgreSQL migration and ownership constraints', () => {
           ${second.accountId}, ${userId}, '2026-08-31', ${first.ledgerId}
         )
       `,
-    ).rejects.toMatchObject({ code: '23503' });
+    ).rejects.toThrow('must reference an interest posting');
+
+    await expect(
+      database`
+        INSERT INTO ledger_entries (
+          id, account_id, user_id, entry_type, principal_cents, effective_date,
+          description, reverses_entry_id
+        ) VALUES (
+          ${ulid()}, ${first.accountId}, ${userId}, 'reversal', -100,
+          '2026-08-24', 'Invalid non-negating reversal', ${first.ledgerId}
+        )
+      `,
+    ).rejects.toThrow('a reversal must exactly negate the referenced entry');
+
+    const reversalId = ulid();
+    await database`
+      INSERT INTO ledger_entries (
+        id, account_id, user_id, entry_type, principal_cents, effective_date,
+        description, reverses_entry_id
+      ) VALUES (
+        ${reversalId}, ${first.accountId}, ${userId}, 'reversal', -10000,
+        '2026-08-24', 'Exact reversal', ${first.ledgerId}
+      )
+    `;
+    await expect(
+      database`
+        INSERT INTO ledger_entries (
+          id, account_id, user_id, entry_type, principal_cents, effective_date,
+          description, reverses_entry_id
+        ) VALUES (
+          ${ulid()}, ${first.accountId}, ${userId}, 'reversal', -1,
+          '2026-08-25', 'Invalid reversal of reversal', ${reversalId}
+        )
+      `,
+    ).rejects.toThrow('a reversal cannot reverse another reversal');
+    const selfReversalId = ulid();
+    await expect(
+      database`
+        INSERT INTO ledger_entries (
+          id, account_id, user_id, entry_type, principal_cents, effective_date,
+          description, reverses_entry_id
+        ) VALUES (
+          ${selfReversalId}, ${first.accountId}, ${userId}, 'reversal', -1,
+          '2026-08-25', 'Invalid self reversal', ${selfReversalId}
+        )
+      `,
+    ).rejects.toThrow('a ledger entry cannot reverse itself');
+
+    await expect(
+      database`
+        INSERT INTO interest_posting_periods (
+          account_id, user_id, period_end, ledger_entry_id
+        ) VALUES (
+          ${first.accountId}, ${userId}, '2026-08-31', ${first.ledgerId}
+        )
+      `,
+    ).rejects.toThrow('must reference an interest posting');
+    const interestLedgerId = ulid();
+    await database`
+      INSERT INTO ledger_entries (
+        id, account_id, user_id, entry_type, interest_cents, effective_date, description
+      ) VALUES (
+        ${interestLedgerId}, ${first.accountId}, ${userId}, 'interest_posted', 10,
+        '2026-08-31', 'Relational integrity interest posting'
+      )
+    `;
+    await expect(
+      database`
+        INSERT INTO interest_posting_periods (
+          account_id, user_id, period_end, ledger_entry_id
+        ) VALUES (
+          ${first.accountId}, ${userId}, '2026-09-30', ${interestLedgerId}
+        )
+      `,
+    ).rejects.toThrow('must match the posting effective date');
     await database`
       INSERT INTO interest_posting_periods (account_id, user_id, period_end, ledger_entry_id)
-      VALUES (${first.accountId}, ${userId}, '2026-08-31', ${first.ledgerId})
+      VALUES (${first.accountId}, ${userId}, '2026-08-31', ${interestLedgerId})
     `;
 
     await repository.deleteGoal(userId, first.goal.id);
     await repository.deleteGoal(userId, second.goal.id);
     const remaining = await database<{ count: string }[]>`
       SELECT count(*) AS count FROM interest_posting_periods
-      WHERE ledger_entry_id = ${first.ledgerId}
+      WHERE ledger_entry_id = ${interestLedgerId}
     `;
     expect(Number(remaining[0]?.count ?? -1)).toBe(0);
   });

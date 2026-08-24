@@ -31,7 +31,22 @@ export function createLogger(level: string, destination?: DestinationStream): Lo
 }
 
 export function safeErrorContext(error: unknown): Readonly<{ errorType: string }> {
+  const safeErrorNames = new Set([
+    'AggregateError',
+    'Error',
+    'EvalError',
+    'RangeError',
+    'ReferenceError',
+    'SyntaxError',
+    'TypeError',
+    'URIError',
+  ]);
   return {
-    errorType: error instanceof Error ? error.name : typeof error,
+    errorType:
+      error instanceof Error
+        ? safeErrorNames.has(error.name)
+          ? error.name
+          : 'Error'
+        : typeof error,
   };
 }

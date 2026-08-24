@@ -39,6 +39,17 @@ test('landing and mobile navigation are accessible at 360px @a11y', async ({ pag
   await expectNoHorizontalOverflowAtWidths(page, [768, 1024, 1440]);
 });
 
+test('anonymous visitor can preview a plan without creating local data @a11y', async ({ page }) => {
+  await page.goto('/plan');
+  await page.getByRole('button', { name: 'Compare my routes' }).click();
+
+  await expect(page.getByText('Your contribution-only baseline')).toBeVisible();
+  await expect(page.locator('.vehicle-card')).toHaveCount(4);
+  await expect(page.getByRole('link', { name: 'Sign in to save this route' })).toBeVisible();
+  await expectNoSeriousAccessibilityViolations(page);
+  await expectNoHorizontalOverflowAtWidths(page, [360, 768, 1024, 1440]);
+});
+
 test('authenticated goal journey persists, completes, exports, and deletes @a11y', async ({
   page,
 }) => {

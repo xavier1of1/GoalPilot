@@ -82,18 +82,39 @@ describe('financial projections', () => {
         vehicleCode: vehicle.vehicleCode,
         principalContributedCents: vehicle.principalContributedCents,
         modeledInterestCents: vehicle.modeledInterestCents,
+        endingBalanceCents: vehicle.endingBalanceCents,
         projectedCompletionDate: vehicle.projectedCompletionDate,
       })),
-    ).toEqual(
-      ['cash', 'hysa', 'cd_ladder', 'treasury_ladder'].map((vehicleCode) => ({
-        vehicleCode,
-        principalContributedCents: validGoalFixture.targetAmountCents,
+    ).toEqual([
+      {
+        vehicleCode: 'cash',
+        principalContributedCents: 600_000,
         modeledInterestCents: 0,
-        projectedCompletionDate: ['cash', 'hysa'].includes(vehicleCode)
-          ? '2026-08-23'
-          : validGoalFixture.targetDate,
-      })),
-    );
+        endingBalanceCents: 600_000,
+        projectedCompletionDate: '2026-08-23',
+      },
+      {
+        vehicleCode: 'hysa',
+        principalContributedCents: 600_000,
+        modeledInterestCents: 0,
+        endingBalanceCents: 600_000,
+        projectedCompletionDate: '2026-08-23',
+      },
+      {
+        vehicleCode: 'cd_ladder',
+        principalContributedCents: 600_000,
+        modeledInterestCents: 26_623,
+        endingBalanceCents: 626_623,
+        projectedCompletionDate: '2027-08-23',
+      },
+      {
+        vehicleCode: 'treasury_ladder',
+        principalContributedCents: 600_000,
+        modeledInterestCents: 25_429,
+        endingBalanceCents: 625_429,
+        projectedCompletionDate: '2027-08-23',
+      },
+    ]);
   });
 
   it('compounds fixed-term lots from each cent-rounded maturity posting', () => {

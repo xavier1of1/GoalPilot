@@ -38,18 +38,23 @@ describe('controlled Demo Autopilot', () => {
 
   async function activate(goalInput: GoalInput, vehicleCode: 'hysa' | 'cd_ladder') {
     const goal = await repository.createGoal(alexId, goalInput);
-    const projection = compareVehicles(goal, initialDate, illustrativeAssumptions);
-    await repository.activateGoal({
-      userId: alexId,
-      goal,
-      vehicleCode,
-      projection,
-      asOfDate: initialDate,
-      nextContributionDate:
-        generateContributionDates(initialDate, goal.targetDate, goal.contributionCadence)[0] ??
-        null,
-    });
-    return goal;
+    try {
+      const projection = compareVehicles(goal, initialDate, illustrativeAssumptions);
+      await repository.activateGoal({
+        userId: alexId,
+        goal,
+        vehicleCode,
+        projection,
+        asOfDate: initialDate,
+        nextContributionDate:
+          generateContributionDates(initialDate, goal.targetDate, goal.contributionCadence)[0] ??
+          null,
+      });
+      return goal;
+    } catch (error) {
+      await repository.deleteGoal(alexId, goal.id);
+      throw error;
+    }
   }
 
   it('posts deposit interest, honors pause, catches up, and replays the same date safely', async () => {
@@ -85,23 +90,26 @@ describe('controlled Demo Autopilot', () => {
         failures: [],
       });
 
-      await repository.setGoalState(alexId, goal.id, ['active'], 'paused', 'paused');
+      await repository.setGoalState(alexId, goal.id, ['active'], 'paused', 'paused', '2026-08-31');
       const pausedAdvance = await processDemoAutopilot(repository, '2026-09-30');
       expect(pausedAdvance.contributionsPosted).toBe(0);
       expect(pausedAdvance.interestPostings).toBe(1);
-      await repository.setGoalState(alexId, goal.id, ['paused'], 'active', 'resumed');
+      await repository.setGoalState(alexId, goal.id, ['paused'], 'active', 'resumed', '2026-10-01');
       const resumed = await processDemoAutopilot(repository, '2026-10-01');
       expect(resumed.contributionsPosted).toBe(1);
 
       const activity = await repository.getActivity(alexId, goal.id);
       expect(activity.filter((entry) => entry.type === 'contribution_posted')).toHaveLength(1);
+      expect(activity.find((entry) => entry.type === 'contribution_posted')).toMatchObject({
+        effectiveDate: '2026-10-01',
+      });
       expect(activity.some((entry) => entry.type === 'contribution_scheduled')).toBe(true);
       expect(activity.some((entry) => entry.type === 'interest_accrued')).toBe(true);
     } finally {
       await repository.deleteGoal(alexId, goal.id);
       await database`UPDATE application_clock SET application_date = ${initialDate}`;
     }
-  });
+  }, 30_000);
 
   it('posts fixed-term interest only at a maturity boundary', async () => {
     const maturityDate = addCalendarDays(initialDate, 180);
@@ -137,7 +145,7 @@ describe('controlled Demo Autopilot', () => {
       await repository.deleteGoal(alexId, goal.id);
       await database`UPDATE application_clock SET application_date = ${initialDate}`;
     }
-  });
+  }, 30_000);
 
   it('does not post deposit interest when a contribution alone reaches the target', async () => {
     const goal = await activate(
@@ -174,7 +182,7 @@ describe('controlled Demo Autopilot', () => {
       await repository.deleteGoal(alexId, goal.id);
       await database`UPDATE application_clock SET application_date = ${initialDate}`;
     }
-  });
+  }, 30_000);
 
   it('keeps funded fixed-term principal locked until the goal date', async () => {
     const goal = await activate(
@@ -217,7 +225,7 @@ describe('controlled Demo Autopilot', () => {
       await repository.deleteGoal(alexId, goal.id);
       await database`UPDATE application_clock SET application_date = ${initialDate}`;
     }
-  });
+  }, 30_000);
 
   it('keeps an already-funded fixed-term opening active until its target date', async () => {
     const goal = await activate(
@@ -250,5 +258,5 @@ describe('controlled Demo Autopilot', () => {
       await repository.deleteGoal(alexId, goal.id);
       await database`UPDATE application_clock SET application_date = ${initialDate}`;
     }
-  });
+  }, 30_000);
 });

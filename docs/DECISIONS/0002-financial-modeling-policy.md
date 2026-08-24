@@ -12,12 +12,17 @@
   at the target date.
 - Monthly schedules preserve the chosen day; a month-end start remains month-end. Weekly and
   biweekly schedules preserve weekday.
+- A contribution delayed by pause or retry keeps its original due-date occurrence for audit, but
+  posts with the actual processing date and earns modeled interest only from that date. The ledger
+  never backdates principal across days whose interest has already been processed.
 - Variable HYSA yield is a buffer and never lowers the zero-interest required installment. Fixed CD
   and Treasury maturity models may show a lower interest-adjusted comparison installment because
   their versioned term is fixed for the illustrated horizon. The zero-interest baseline remains
   visually primary.
 - CD lots use 180-day terms and Treasury lots use 91-day terms. Only whole modeled maturities ending
   by the goal date earn interest; no secondary-market sale or early withdrawal is assumed.
+- Already-funded fixed-term goals schedule no further contributions, remain locked until the target
+  boundary, and still receive every complete maturity credit ending by that boundary.
 - Assumptions older than 365 days are stale and cannot produce a new recommendation. An already
   activated account retains its immutable assumption snapshot and displays a stale warning.
 - `confidence=expected` is the only MVP value. Additional scenarios are deferred until policy is

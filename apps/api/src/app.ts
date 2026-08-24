@@ -336,27 +336,8 @@ export async function buildApp(dependencies: AppDependencies): Promise<GoalPilot
     const user = await requireUser(request, repository);
     const goal = await repository.getGoal(user.id, request.params.goalId);
     if (goal === null) throw new ResourceNotFoundError();
-    const storedAccount = await goalAccountProvider.summary(user.id, goal.id);
     const applicationDate = await clock.today();
-    const account =
-      storedAccount === null
-        ? null
-        : {
-            ...storedAccount,
-            projectedCompletionDate: ['purchase_ready', 'completed'].includes(storedAccount.status)
-              ? applicationDate
-              : goal.targetDate < applicationDate
-                ? null
-                : (compareVehicles(
-                    {
-                      ...goal,
-                      currentSavedCents: storedAccount.currentLedgerBalanceCents,
-                    },
-                    applicationDate,
-                    await rateProvider.getCatalog(applicationDate),
-                  ).vehicles.find((vehicle) => vehicle.vehicleCode === storedAccount.vehicleCode)
-                    ?.projectedCompletionDate ?? null),
-          };
+    const account = await goalAccountProvider.summary(user.id, goal.id, applicationDate);
     return { goal, account, applicationDate };
   });
 
@@ -441,7 +422,7 @@ export async function buildApp(dependencies: AppDependencies): Promise<GoalPilot
       }
       return reply
         .status(201)
-        .send({ account: await goalAccountProvider.summary(user.id, goal.id) });
+        .send({ account: await goalAccountProvider.summary(user.id, goal.id, asOfDate) });
     },
   );
 
@@ -453,6 +434,7 @@ export async function buildApp(dependencies: AppDependencies): Promise<GoalPilot
   ): void => {
     app.post(path, { schema: { params: goalIdParameters } }, async (request) => {
       const user = await requireUser(request, repository);
+      const effectiveDate = await clock.today();
       if (
         !(await repository.setGoalState(
           user.id,
@@ -460,6 +442,7 @@ export async function buildApp(dependencies: AppDependencies): Promise<GoalPilot
           fromStates,
           toState,
           eventType,
+          effectiveDate,
         ))
       )
         throw new ResourceNotFoundError();

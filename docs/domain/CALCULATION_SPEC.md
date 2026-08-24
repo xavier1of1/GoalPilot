@@ -12,7 +12,10 @@ Deposit models accrue daily using `(1 + APY)^(1/365) - 1`, after any contributio
 post at month-end and the target date. Merely crossing the goal amount is not an interest-posting
 boundary. Maturity models create lots, compound from each cent-rounded prior maturity, and credit
 only complete fixed terms ending no later than the target date. Already-funded fixed-term principal
-remains locked until the target boundary. See ADR 0002 for policy decisions.
+remains locked until the target boundary, schedules no additional contributions, and still earns
+complete modeled maturity postings. A delayed scheduled contribution retains its original due date
+as audit context but posts on the actual retry date, so it cannot be backdated across already-processed
+interest days. See ADR 0002 for policy decisions.
 
 For the reviewed `validGoalFixture` at 2026-08-23, the exact regression vector is:
 

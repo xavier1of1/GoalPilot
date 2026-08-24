@@ -49,9 +49,10 @@ builds, CodeQL, dependency review, Dependabot, Gitleaks, dependency audit, and C
 generation.
 
 The corrected M18 audit passed repeatable setup, an exact-version Dev Container image/runtime
-probe, diagnostics, isolated-test reset and migration recovery, 64 automated tests, enforced
+probe, diagnostics, isolated-test reset and migration recovery, 67 automated tests, enforced
 API/data/domain coverage thresholds, production builds, dependency and secret scans, SBOM
-generation, and two Playwright/Axe browser journeys across the required responsive widths. A full
+generation, and three Playwright/Axe browser journeys plus overflow checks at the required responsive
+widths. A full
 VS Code Dev Container editor attach was not executed and is not claimed.
 
 AWS, Cognito, managed PostgreSQL, provider contracts, real authentication federation, money

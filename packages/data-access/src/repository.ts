@@ -376,6 +376,7 @@ export class GoalPilotRepository {
     fromStates: readonly GoalDto['status'][],
     toState: GoalDto['status'],
     eventType: ActivityDto['type'],
+    effectiveDate: string,
   ): Promise<boolean> {
     return this.database.begin(async (transaction) => {
       const rows = await transaction<{ id: string }[]>`
@@ -398,7 +399,7 @@ export class GoalPilotRepository {
           INSERT INTO ledger_entries
             (id, account_id, user_id, entry_type, effective_date, description)
           SELECT ${ulid()}, id, ${userId}, ${eventType},
-            (SELECT application_date FROM application_clock WHERE singleton = true),
+            ${effectiveDate},
             ${eventType.replaceAll('_', ' ')}
           FROM simulated_accounts WHERE goal_id = ${goalId} AND user_id = ${userId}
         `;
@@ -421,7 +422,7 @@ export class GoalPilotRepository {
               ) VALUES (
                 ${ulid()}, ${accounts[0].id}, ${userId}, 'simulated_withdrawal',
                 ${-principalCents}, ${-interestCents},
-                (SELECT application_date FROM application_clock WHERE singleton = true),
+                ${effectiveDate},
                 'Simulated purchase withdrawal'
               )
             `;
@@ -502,7 +503,9 @@ export class GoalPilotRepository {
   public async getAccountSummary(
     userId: string,
     goalId: string,
+    asOfDate?: string,
   ): Promise<AccountSummaryDto | null> {
+    const applicationDate = asOfDate ?? (await this.getApplicationDate());
     const rows = await this.database<
       (postgres.Row & {
         readonly id: string;
@@ -514,7 +517,6 @@ export class GoalPilotRepository {
         readonly next_contribution_date: string | Date | null;
         readonly target_amount_cents: string;
         readonly target_date: string | Date;
-        readonly application_date: string | Date;
         readonly principal_cents: string;
         readonly interest_cents: string;
         readonly balance_cents: string;
@@ -525,11 +527,9 @@ export class GoalPilotRepository {
     >`
       SELECT a.id, a.goal_id, a.status, p.vehicle_code, p.assumption_version,
              va.apy_basis_points, vav.reviewed_date,
-             (p.vehicle_code <> 'cash' AND
-               (SELECT application_date FROM application_clock WHERE singleton = true) >
-                 vav.reviewed_date + 365) AS assumption_is_stale,
+             (p.vehicle_code <> 'cash' AND ${applicationDate}::date >
+               vav.reviewed_date + 365) AS assumption_is_stale,
              a.next_contribution_date, g.target_amount_cents, g.target_date,
-             (SELECT application_date FROM application_clock WHERE singleton = true) AS application_date,
              COALESCE(SUM(l.principal_cents) FILTER (
                WHERE l.entry_type IN ('account_opened', 'contribution_posted')
              ), 0) AS principal_cents,
@@ -568,9 +568,7 @@ export class GoalPilotRepository {
       interestEarnedCents: interest,
       currentLedgerBalanceCents: balance,
       availableBalanceCents:
-        fixedTerm && calendarDate(row.application_date) < calendarDate(row.target_date)
-          ? 0
-          : balance,
+        fixedTerm && applicationDate < calendarDate(row.target_date) ? 0 : balance,
       pendingContributionCents: 0,
       nextContributionDate:
         row.next_contribution_date === null ? null : calendarDate(row.next_contribution_date),
@@ -793,6 +791,7 @@ export class GoalPilotRepository {
 
   public async processScheduledContribution(input: {
     readonly account: DueAccount;
+    readonly processingDate: string;
     readonly nextContributionDate: string | null;
   }): Promise<{ readonly posted: boolean; readonly purchaseReady: boolean }> {
     return this.database.begin(async (transaction) => {
@@ -845,7 +844,7 @@ export class GoalPilotRepository {
           occurrence_id, description
         ) VALUES (
           ${ulid()}, ${input.account.accountId}, ${input.account.userId}, 'contribution_posted',
-          ${input.account.recurringContributionCents}, ${input.account.nextContributionDate},
+          ${input.account.recurringContributionCents}, ${input.processingDate},
           ${occurrenceId}, 'Scheduled simulated contribution posted'
         )
       `;
@@ -858,12 +857,12 @@ export class GoalPilotRepository {
         input.account.vehicleCode === 'cd_ladder' ||
         input.account.vehicleCode === 'treasury_ladder';
       const purchaseReady =
-        funded && (!fixedTerm || input.account.nextContributionDate >= input.account.targetDate);
+        funded && (!fixedTerm || input.processingDate >= input.account.targetDate);
       await transaction`
         UPDATE simulated_accounts SET
           status = ${purchaseReady ? 'purchase_ready' : 'active'},
           next_contribution_date = ${funded ? null : input.nextContributionDate},
-          last_processed_date = ${input.account.nextContributionDate},
+          last_processed_date = ${input.processingDate},
           updated_at = now()
         WHERE id = ${input.account.accountId} AND user_id = ${input.account.userId}
       `;

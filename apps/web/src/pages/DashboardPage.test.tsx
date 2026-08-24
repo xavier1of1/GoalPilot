@@ -2,9 +2,9 @@
 
 import '@testing-library/jest-dom/vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AccountSummaryDto, GoalDto } from '@goalpilot/contracts';
 
@@ -48,6 +48,8 @@ const account: AccountSummaryDto = {
 };
 
 describe('GoalPilot dashboard contribution dialog', () => {
+  afterEach(cleanup);
+
   beforeEach(() => {
     vi.restoreAllMocks();
     Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
@@ -99,5 +101,32 @@ describe('GoalPilot dashboard contribution dialog', () => {
     expect(amount).toHaveAttribute('aria-describedby', alert.id);
     await waitFor(() => expect(amount).toHaveFocus());
     expect(contribute).not.toHaveBeenCalled();
+  });
+
+  it('announces an operation failure without marking a valid amount invalid', async () => {
+    vi.spyOn(api, 'contribute').mockRejectedValue(new Error('The local API is unavailable.'));
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={[`/dashboard?goal=${goal.id}`]}>
+          <DashboardPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Add simulated contribution' }));
+    const amount = document.querySelector<HTMLInputElement>('#contribution-amount');
+    expect(amount).not.toBeNull();
+    if (amount === null) throw new Error('Contribution amount input was not rendered.');
+    fireEvent.change(amount, { target: { value: '100' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Post simulated contribution' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('The local API is unavailable.');
+    expect(amount).not.toHaveAttribute('aria-invalid');
+    expect(amount).not.toHaveAttribute('aria-describedby');
+    await waitFor(() => expect(alert).toHaveFocus());
   });
 });
