@@ -1,10 +1,17 @@
 # GoalPilot MVP Product Requirements Document
 
 **Document owner:** Xavier Kubancik  
-**Status:** Approved implementation baseline for Codex  
-**Version:** 1.0  
+**Status:** Approved local product-experience baseline
+**Version:** 1.1
 **Baseline date:** 2026-08-23  
-**Target release:** Public portfolio-quality MVP with a small invited test group
+**Target release:** Local product-experience release for structured user validation
+
+> **Current release authority:** Local M00–M18 acceptance and the subsequent product-experience
+> phase are authoritative for the current release. AWS criteria remain future M19–M22 work.
+
+Requirements in this document that mention Cognito, CDK, Lambda, CloudFront, a deployed URL, or
+another AWS service describe the future M19–M22 adaptation unless the product-experience phase
+explicitly says otherwise. They are not acceptance criteria for the current local release.
 
 ## 1. Purpose
 
@@ -531,9 +538,9 @@ MVP implementations:
 
 Future implementations may include an embedded-finance or sponsor-bank adapter after legal, security, commercial, and provider approval.
 
-## 18. Release acceptance criteria
+## 18. Historical cloud acceptance criteria (future M19–M22)
 
-The MVP is releasable only when:
+The future cloud release is releasable only when:
 
 1. A clean clone installs from the committed lockfile.
 2. Local bootstrap and database migration are documented and repeatable.
@@ -558,7 +565,7 @@ The MVP is releasable only when:
 
 ## 19. Future scale path
 
-The MVP architecture must permit these later steps without redesigning the product core:
+The local architecture should permit these later steps without redesigning the product core:
 
 1. Replace static assumptions with an approved rate-ingestion adapter.
 2. Add provider sandbox account opening behind `GoalAccountProvider`.
@@ -570,4 +577,46 @@ The MVP architecture must permit these later steps without redesigning the produ
 8. Move Fastify from Lambda to ECS Fargate only if sustained load, connection behavior, or background processing justifies it.
 9. Add Treasury or investment execution only under an approved regulated operating model.
 
-The MVP is successful when it proves that users understand and value the set-and-forget goal experience, not when it prematurely reproduces a bank.
+The product is successful when it proves that users understand and value the set-and-forget goal
+experience, not when it prematurely reproduces a bank.
+
+## 20. Current local product-experience requirements
+
+The current phase extends the verified M00–M18 simulator without changing its educational scope.
+Its customer-facing object is a **Simulated Goal Plan**. Activating one must state that no real
+account is opened, no money is moved, all activity is simulated, rates are illustrative, and the
+selected assumption version is fixed for reproducibility.
+
+The phase must:
+
+1. Reveal a zero-interest safe contribution before asking what the user can afford.
+2. Keep the safe contribution primary; illustrative interest may only create modeled cushion or
+   earlier readiness.
+3. Rank vehicle fit by eligibility, purchase readiness using the safe contribution, declared
+   access, liquidity conflict, modeled cushion, and finally vehicle code.
+4. Keep cash visible and explain every ineligible vehicle.
+5. Separate plan health (`AHEAD`, `ON_TRACK`, `ATTENTION_NEEDED`, `FUNDED_BUT_LOCKED`,
+   `PURCHASE_READY`, `PAUSED`) from lifecycle state.
+6. Provide stateless, one-dimension What-If previews and apply a selected scenario only as a new
+   immutable plan version.
+7. Offer at most three deterministic recovery choices—contribution, deadline, and target—without
+   escalating product risk.
+8. Make drafts, immutable plan history, completed goals, and archived goals navigable.
+9. Present controlled-clock Autopilot as a bounded story with milestone controls and a scoped
+   seeded-demo reset.
+10. Record only allowlisted, privacy-safe local product events in storage separate from security
+    audit events.
+11. Include the feature-flagged **GoalPilot Plus: Purchase Timing Lab** using deterministic fixture
+    history, with no retailer network call, scraping, prediction, purchase action, affiliate
+    relationship, or financial-plan mutation.
+12. Ship production-built local and demo modes plus a terminating local smoke check, without an
+    AWS dependency.
+
+The primary deterministic showcase is **Japan trip in 18 months**. Its affordable contribution is
+slightly below the safe baseline, modeled interest is visible but secondary, at least one
+fixed-term model is rejected or subordinated for a clear policy reason, and one missed contribution
+has a bounded recovery. Displayed results must be produced by the real domain engine.
+
+Current acceptance is defined by PX00–PX10 in `docs/TASKS.md` and the hard gate **GoalPilot local
+product experience must pass**. User-validation plans and blank results templates are release
+artifacts; usability outcomes may be claimed only after real sessions are executed and recorded.

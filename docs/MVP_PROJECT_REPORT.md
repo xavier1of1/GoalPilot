@@ -7,7 +7,7 @@
 
 GoalPilot is implemented as a local-first educational savings simulator. A user can preview a
 zero-interest contribution baseline, compare four versioned illustrative vehicle models, sign in
-with a secure local account, activate a simulated Goal Account, post or automate simulated
+with a secure local account, activate a Simulated Goal Plan, post or automate simulated
 contributions and interest, inspect an append-only activity history, pause and resume, complete the
 goal with a simulated purchase withdrawal, archive it, export data, and delete the local profile.
 
@@ -58,3 +58,15 @@ VS Code Dev Container editor attach was not executed and is not claimed.
 AWS, Cognito, managed PostgreSQL, provider contracts, real authentication federation, money
 movement, compliance approval, and production operations remain M19+ future work behind the local
 release hard gate.
+
+## Product-experience phase
+
+The M18 checkpoint was independently re-proved and corrected in commit `1dbd3a4`. The new PX00–PX10
+phase is additive and not yet covered by the M18 verification claim. It promotes the zero-interest
+safe contribution to the primary commitment, introduces deterministic health/What-If/recovery and
+immutable plan history, makes controlled time an owner-scoped product story, adds privacy-safe local
+events, and includes a fixture-only Purchase Timing Lab behind a default-off flag.
+
+The exact phase design is in `PRODUCT_EXPERIENCE_SPEC.md`, `PURCHASE_TIMING_LAB.md`, ADR 0003, and
+`TASKS.md`. Its completion label is reserved until PX10 evidence exists. No usability result, local
+release mode, premium feature, or new automated check is claimed merely because it is specified.

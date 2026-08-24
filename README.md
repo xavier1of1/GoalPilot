@@ -2,7 +2,11 @@
 
 GoalPilot is a local-first educational savings simulator. It compares a zero-interest baseline with
 versioned illustrative cash, high-yield savings, CD-ladder, and Treasury-bill-ladder models, then
-lets an authenticated local user operate an auditable simulated Goal Account.
+lets an authenticated local user operate an auditable Simulated Goal Plan.
+
+The verified M00–M18 foundation is now being extended through PX00–PX10 into a baseline-first,
+resilient **Simulated Goal Plan** experience. AWS remains future M19–M22 work. Until the new hard
+gate passes, product-phase screens and commands are implementation work rather than release claims.
 
 > Educational simulation using illustrative assumptions. GoalPilot does not hold, transfer, or
 > invest money. Rates and outcomes are not guaranteed.
@@ -69,5 +73,8 @@ that development and test targets differ.
 Playwright uses dedicated test ports 3100/5273, so `pnpm test:e2e` can run while the normal
 3000/5173 development servers are open.
 
-See [local development](docs/LOCAL_DEVELOPMENT.md), [architecture](docs/ARCHITECTURE.md),
-[security](docs/SECURITY.md), and [testing](docs/TESTING.md).
+See the [product-experience specification](docs/PRODUCT_EXPERIENCE_SPEC.md),
+[Purchase Timing Lab policy](docs/PURCHASE_TIMING_LAB.md),
+[local development](docs/LOCAL_DEVELOPMENT.md), [architecture](docs/ARCHITECTURE.md),
+[security](docs/SECURITY.md), [testing](docs/TESTING.md), and
+[execution plan](docs/TASKS.md).

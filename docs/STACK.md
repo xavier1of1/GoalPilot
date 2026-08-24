@@ -5,6 +5,9 @@
 **Pinned on:** 2026-08-23  
 **Decision goal:** Lowest practical MVP cost while preserving security, full-stack depth, AWS experience, PostgreSQL portability, and a clean path to real financial-provider integrations.
 
+> **Current authority:** M00–M18 and PX00–PX10 are the active local release. Every AWS service and
+> package in this document remains future M19–M22 work unless a section explicitly says current.
+
 ## 1. Architecture decision
 
 GoalPilot will use a TypeScript monorepo containing a React single-page application, a Fastify modular API, a pure calculation domain, PostgreSQL persistence, AWS serverless hosting, and provider ports with simulation adapters.
@@ -240,6 +243,19 @@ Compatibility note (2026-08-23): the originally pinned Drizzle `0.45.2` declarat
 pass the approved TypeScript `6.0.3` configuration with `skipLibCheck=false`, including errors in
 optional non-PostgreSQL drivers. The local MVP therefore uses the conventions-approved explicit
 parameterized-query option and reviewed SQL migrations instead of weakening type checking.
+
+### Product-experience persistence additions
+
+PX uses the same PostgreSQL database and ordered SQL runner. It adds forward-only migrations for
+owner-scoped drafts, immutable plan provenance, per-user controlled clocks, seeded-fixture
+capability, constrained product events, and the five Purchase Timing Lab concepts. JSON is allowed
+only for a strict, versioned partial-draft payload; telemetry has fixed columns and no arbitrary
+metadata. Composite owner keys, integer cents, date checks, unique replay keys, and immutable/
+append-only triggers remain mandatory.
+
+The Timing Lab adds no database, queue, cache, scraper, retailer client, or statistical/AI package.
+Its small exact algorithm uses TypeScript integer/Decimal primitives and deterministic committed
+fixtures behind `HistoricalPriceProvider`.
 
 ## 8. Authentication and session design
 

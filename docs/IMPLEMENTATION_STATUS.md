@@ -10,11 +10,25 @@
 - Initial highest-priority task: establish the pinned monorepo, Dev Container, local PostgreSQL,
   and compatibility proof, then build vertically in dependency order.
 
-## Current milestone — M18 complete
+## Verified foundation — M18 complete
 
 M00 through M18 and the local hard gate passed on 2026-08-23. M19 through M22 remain future,
 unauthorized AWS work. This is a verified local educational simulator, not a production financial
 service.
+
+## Current milestone — PX00 complete; PX01 next
+
+The independent checkpoint was re-proved, corrected, and committed as `1dbd3a4`. The PX product
+policy and complete required documentation set were reconciled before customer-visible financial
+changes. PX01–PX10 and the new product-experience hard gate are not complete and are not covered by
+the M18 claim.
+
+The approved direction is baseline-first planning, deterministic plan health and recovery,
+immutable scenario history, owner-scoped Story-Mode Autopilot, constrained local product events,
+and a fixture-only feature-flagged Purchase Timing Lab. AWS M19–M22 remain unauthorized.
+
+Human validation is an external gate. The study plan and blank results template are prepared, but no
+participant session has been executed or passed.
 
 The host has an unrelated PostgreSQL process on 5432, so the ignored workstation `.env.local`
 uses port 55432. The committed clean-checkout default remains `localhost:5432`.
@@ -78,7 +92,6 @@ were completed. Actionable findings were resolved, including:
 
 ## Next task
 
-Preserve the hard gate. Continue with evidence-driven local product iteration—goal editing and plan
-history, richer Autopilot controls, dashboard insights, additional component tests, and user
-research—before considering M19. AWS architecture adaptation begins only after explicit separate
-authorization.
+Implement PX01–PX10 in dependency order with focused evidence at each exit gate. Do not apply the
+label “GoalPilot Local Product Experience verified” until the new hard gate has executed
+successfully. AWS architecture adaptation begins only after explicit separate authorization.

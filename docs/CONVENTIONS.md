@@ -589,3 +589,31 @@ A task is complete only when:
 10. The non-author review is complete.
 
 An implementation that merely works on the author's machine is not done.
+
+## 24. Product-experience conventions
+
+- Customer copy says **Simulated Goal Plan**. Internal persistence names may remain stable.
+- The zero-interest safe contribution is revealed before budget fit and remains the primary
+  commitment. React never calculates it.
+- Interest is always illustrative cushion; it cannot lower the displayed commitment or override an
+  access/maturity failure.
+- Lifecycle and `PlanHealth` are distinct typed values. Health follows ADR 0003 precedence and uses
+  explanation codes, never an opaque score.
+- Scenario types make zero or multiple changes unrepresentable. Preview is stateless; apply reloads
+  the base snapshot and creates immutable history.
+- Recovery is limited to contribution, deadline, and target; no vehicle/risk/debt escalation.
+- Partial drafts do not weaken complete financial aggregates. They are owner-scoped, strict,
+  optimistic-versioned, and atomically promoted.
+- Consumer controlled-clock operations are authenticated, per-user, milestone-only, and seeded
+  reset is capability-based. Never infer reset authority from email or UI state.
+- Feature flags default off, are reported by the server, and are enforced in the API. Hidden UI is
+  not an authorization control.
+- Product telemetry uses one schema per allowlisted event and fixed categorical columns. No money,
+  entered text, URL, email, resource/session/request/CSRF identifiers, secrets, or free metadata.
+- Historical price observations and assessments are immutable and versioned. Timing language is
+  descriptive and non-predictive; readiness always gates favorable-price copy.
+- Product UI tests cover first use, loading, empty, validation, dependency/network failure, stale
+  response, conflict, disabled capability, and relevant domain states, including focus recovery.
+- Release docs distinguish specification, executed automated evidence, and real human-validation
+  evidence. Never turn a fixture, event count, plan, or blank results template into a validation
+  claim.
