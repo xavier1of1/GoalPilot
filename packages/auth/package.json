@@ -9,6 +9,7 @@
     "build": "tsc"
   },
   "dependencies": {
+    "@goalpilot/contracts": "workspace:*",
     "@goalpilot/provider-ports": "workspace:*"
   },
   "devDependencies": {

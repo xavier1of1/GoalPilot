@@ -9,6 +9,7 @@ import {
   calculateMaturityInterestPosting,
   calculateZeroInterestBaseline,
   compareVehicles,
+  roundAccruedInterestMicros,
 } from './projection.js';
 
 describe('contribution schedules', () => {
@@ -75,14 +76,23 @@ describe('financial projections', () => {
     expect(result.feasible).toBe(true);
     expect(result.occurrenceCount).toBe(0);
     expect(result.projectedBalanceCents).toBe(validGoalFixture.targetAmountCents);
-    expect(compareVehicles(fundedGoal, '2026-08-23', illustrativeAssumptions).vehicles).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          principalContributedCents: validGoalFixture.targetAmountCents,
-          modeledInterestCents: 0,
-          projectedCompletionDate: '2026-08-23',
-        }),
-      ]),
+    const vehicles = compareVehicles(fundedGoal, '2026-08-23', illustrativeAssumptions).vehicles;
+    expect(
+      vehicles.map((vehicle) => ({
+        vehicleCode: vehicle.vehicleCode,
+        principalContributedCents: vehicle.principalContributedCents,
+        modeledInterestCents: vehicle.modeledInterestCents,
+        projectedCompletionDate: vehicle.projectedCompletionDate,
+      })),
+    ).toEqual(
+      ['cash', 'hysa', 'cd_ladder', 'treasury_ladder'].map((vehicleCode) => ({
+        vehicleCode,
+        principalContributedCents: validGoalFixture.targetAmountCents,
+        modeledInterestCents: 0,
+        projectedCompletionDate: ['cash', 'hysa'].includes(vehicleCode)
+          ? '2026-08-23'
+          : validGoalFixture.targetDate,
+      })),
     );
   });
 
@@ -137,6 +147,89 @@ describe('financial projections', () => {
     ]);
   });
 
+  it('matches the reviewed exact golden vector for every illustrative vehicle', () => {
+    const result = compareVehicles(validGoalFixture, '2026-08-23', illustrativeAssumptions);
+    expect(
+      result.vehicles.map(
+        ({
+          vehicleCode,
+          requiredContributionCents,
+          principalContributedCents,
+          modeledInterestCents,
+          endingBalanceCents,
+          projectedCompletionDate,
+          surplusCents,
+        }) => ({
+          vehicleCode,
+          requiredContributionCents,
+          principalContributedCents,
+          modeledInterestCents,
+          endingBalanceCents,
+          projectedCompletionDate,
+          surplusCents,
+        }),
+      ),
+    ).toEqual([
+      {
+        vehicleCode: 'cash',
+        requiredContributionCents: 41_667,
+        principalContributedCents: 640_000,
+        modeledInterestCents: 0,
+        endingBalanceCents: 640_000,
+        projectedCompletionDate: '2027-08-23',
+        surplusCents: 40_000,
+      },
+      {
+        vehicleCode: 'hysa',
+        requiredContributionCents: 41_667,
+        principalContributedCents: 595_000,
+        modeledInterestCents: 10_443,
+        endingBalanceCents: 605_443,
+        projectedCompletionDate: '2027-07-23',
+        surplusCents: 5_443,
+      },
+      {
+        vehicleCode: 'cd_ladder',
+        requiredContributionCents: 40_849,
+        principalContributedCents: 640_000,
+        modeledInterestCents: 10_359,
+        endingBalanceCents: 650_359,
+        projectedCompletionDate: '2027-08-23',
+        surplusCents: 50_359,
+      },
+      {
+        vehicleCode: 'treasury_ladder',
+        requiredContributionCents: 40_708,
+        principalContributedCents: 640_000,
+        modeledInterestCents: 12_266,
+        endingBalanceCents: 652_266,
+        projectedCompletionDate: '2027-08-23',
+        surplusCents: 52_266,
+      },
+    ]);
+  });
+
+  it('does not post accrued deposit interest merely because principal reaches the target', () => {
+    const result = compareVehicles(
+      {
+        ...validGoalFixture,
+        targetAmountCents: 100_000,
+        currentSavedCents: 99_999,
+        recurringContributionCents: 1,
+        contributionCadence: 'weekly',
+        targetDate: '2026-12-31',
+      },
+      '2026-08-23',
+      illustrativeAssumptions,
+    );
+    expect(result.vehicles.find((vehicle) => vehicle.vehicleCode === 'hysa')).toMatchObject({
+      principalContributedCents: 100_000,
+      modeledInterestCents: 0,
+      endingBalanceCents: 100_000,
+      projectedCompletionDate: '2026-08-30',
+    });
+  });
+
   it('keeps variable yield as a buffer and does not lower its required installment', () => {
     const result = compareVehicles(validGoalFixture, '2026-08-23', illustrativeAssumptions);
     const hysa = result.vehicles.find((vehicle) => vehicle.vehicleCode === 'hysa');
@@ -178,6 +271,10 @@ describe('financial projections', () => {
 
   it('rounds posted interest to cents with banker rounding', () => {
     expect(calculatePostedInterest(100_000, 400, 365)).toBe(4_000);
+    expect(roundAccruedInterestMicros(500_000)).toBe(0);
+    expect(roundAccruedInterestMicros(1_500_000)).toBe(2);
+    expect(calculateMaturityInterestPosting(10_000, 425, 91, 1)).toBe(104);
+    expect(calculateMaturityInterestPosting(10_000, 425, 91, 4)).toBe(108);
     expect(() => calculatePostedInterest(100_000, -1, 1)).toThrow(RangeError);
   });
 });

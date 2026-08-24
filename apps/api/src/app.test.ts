@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { previewOutputSchema } from '@goalpilot/contracts';
 import { createDatabaseClient } from '@goalpilot/data-access';
+import { illustrativeAssumptions } from '@goalpilot/domain';
 
 import { buildApp } from './app.js';
 import type { AppConfiguration } from './config.js';
@@ -74,6 +75,36 @@ describe('Fastify public API', () => {
       false,
       false,
     ]);
+  });
+
+  it('uses injected clock and rate providers for the runtime catalog boundary', async () => {
+    const database = createDatabaseClient(configuration.DATABASE_URL, 1);
+    let requestedDate = '';
+    const app = await buildApp({
+      configuration,
+      database,
+      clock: {
+        today: () => Promise.resolve('2026-09-01'),
+        advanceTo: () => Promise.resolve(),
+      },
+      rateProvider: {
+        getCatalog: (asOfDate) => {
+          requestedDate = asOfDate;
+          return Promise.resolve(illustrativeAssumptions.slice(0, 1));
+        },
+      },
+    });
+    resources.push({
+      close: async () => {
+        await app.close();
+        await database.end();
+      },
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/api/v1/vehicle-catalog' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json<{ vehicles: readonly unknown[] }>().vehicles).toHaveLength(1);
+    expect(requestedDate).toBe('2026-09-01');
   });
 
   it('keeps the local stateless preview p95 under one second', async () => {

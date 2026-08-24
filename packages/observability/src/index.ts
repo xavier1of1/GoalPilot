@@ -6,6 +6,7 @@ export function createLogger(level: string, destination?: DestinationStream): Lo
     base: { service: 'goalpilot-api' },
     redact: {
       paths: [
+        'err',
         'req.headers.authorization',
         'req.headers.cookie',
         'headers.authorization',
@@ -27,4 +28,10 @@ export function createLogger(level: string, destination?: DestinationStream): Lo
     },
   };
   return destination === undefined ? pino(options) : pino(options, destination);
+}
+
+export function safeErrorContext(error: unknown): Readonly<{ errorType: string }> {
+  return {
+    errorType: error instanceof Error ? error.name : typeof error,
+  };
 }

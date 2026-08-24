@@ -5,13 +5,13 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    port: 5173,
+    port: Number(process.env['GOALPILOT_WEB_PORT'] ?? 5173),
     strictPort: true,
     proxy: {
-      '/api': 'http://localhost:3000',
-      '/auth': 'http://localhost:3000',
-      '/health': 'http://localhost:3000',
-      '/docs': 'http://localhost:3000',
+      '/api': process.env['GOALPILOT_API_PROXY_ORIGIN'] ?? 'http://localhost:3000',
+      '/auth': process.env['GOALPILOT_API_PROXY_ORIGIN'] ?? 'http://localhost:3000',
+      '/health': process.env['GOALPILOT_API_PROXY_ORIGIN'] ?? 'http://localhost:3000',
+      '/docs': process.env['GOALPILOT_API_PROXY_ORIGIN'] ?? 'http://localhost:3000',
     },
   },
   build: {

@@ -208,6 +208,9 @@ importers:
 
   packages/auth:
     dependencies:
+      '@goalpilot/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@goalpilot/provider-ports':
         specifier: workspace:*
         version: link:../provider-ports
@@ -274,18 +277,12 @@ importers:
       '@goalpilot/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@goalpilot/data-access':
-        specifier: workspace:*
-        version: link:../data-access
       '@goalpilot/domain':
         specifier: workspace:*
         version: link:../domain
       '@goalpilot/provider-ports':
         specifier: workspace:*
         version: link:../provider-ports
-      ulid:
-        specifier: 3.0.2
-        version: 3.0.2
 
   packages/test-support:
     dependencies:

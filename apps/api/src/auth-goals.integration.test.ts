@@ -159,6 +159,29 @@ describe('authenticated goal API integration', () => {
       payload: { amountCents: 10_000, effectiveDate: '2026-08-23' },
     });
     expect(crossUserContribution.statusCode).toBe(404);
+    const crossUserActivation = await app.inject({
+      method: 'POST',
+      url: `/api/v1/goals/${goalId}/activate`,
+      headers: {
+        origin: configuration.WEB_ORIGIN,
+        cookie: sam.cookie,
+        'x-csrf-token': sam.csrf,
+      },
+      payload: { vehicleCode: 'hysa' },
+    });
+    expect(crossUserActivation.statusCode).toBe(404);
+    for (const action of ['pause', 'resume', 'complete', 'archive'] as const) {
+      const crossUserStateChange = await app.inject({
+        method: 'POST',
+        url: `/api/v1/goals/${goalId}/${action}`,
+        headers: {
+          origin: configuration.WEB_ORIGIN,
+          cookie: sam.cookie,
+          'x-csrf-token': sam.csrf,
+        },
+      });
+      expect(crossUserStateChange.statusCode).toBe(404);
+    }
 
     const activate = await app.inject({
       method: 'POST',
@@ -447,6 +470,17 @@ describe('authenticated goal API integration', () => {
     expect(me.statusCode).toBe(200);
     expect(me.json()).toMatchObject({ user: { email: 'alex@example.test' } });
 
+    const invalidLogin = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      headers: { origin: configuration.WEB_ORIGIN },
+      payload: { email: 'alex@example.test', password: 'Incorrect-Password-2026!' },
+    });
+    expect(invalidLogin.statusCode).toBe(401);
+    expect(invalidLogin.json()).toMatchObject({
+      error: { code: 'AUTHENTICATION_REQUIRED' },
+    });
+
     const refreshedLogin = await app.inject({
       method: 'POST',
       url: '/auth/login',
@@ -521,6 +555,12 @@ describe('authenticated goal API integration', () => {
       data: { user: { id: userId, displayName: 'Privacy Test' }, goals: [] },
     });
     expect(exportResponse.body).not.toContain('password_hash');
+    const legacyExport = await app.inject({
+      method: 'GET',
+      url: '/api/v1/data-export',
+      headers: { cookie: session.cookie },
+    });
+    expect(legacyExport.statusCode).toBe(404);
     const requests = await database<{ status: string }[]>`
       SELECT status FROM data_requests WHERE user_id = ${userId} AND request_type = 'export'
     `;

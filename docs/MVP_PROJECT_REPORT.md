@@ -48,10 +48,11 @@ repeatable migrations and fixtures, unit/integration/component/security/browser 
 builds, CodeQL, dependency review, Dependabot, Gitleaks, dependency audit, and CycloneDX SBOM
 generation.
 
-The M18 audit passed repeatable setup, an exact-version Dev Container build, diagnostics, reset and
-migration recovery, 47 automated tests, enforced API/data/domain coverage thresholds, production
-builds, dependency and secret scans, SBOM generation, and two Playwright/Axe browser journeys at
-the required responsive widths.
+The corrected M18 audit passed repeatable setup, an exact-version Dev Container image/runtime
+probe, diagnostics, isolated-test reset and migration recovery, 64 automated tests, enforced
+API/data/domain coverage thresholds, production builds, dependency and secret scans, SBOM
+generation, and two Playwright/Axe browser journeys across the required responsive widths. A full
+VS Code Dev Container editor attach was not executed and is not claimed.
 
 AWS, Cognito, managed PostgreSQL, provider contracts, real authentication federation, money
 movement, compliance approval, and production operations remain M19+ future work behind the local

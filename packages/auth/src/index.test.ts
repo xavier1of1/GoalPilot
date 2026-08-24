@@ -19,4 +19,13 @@ describe('local authentication', () => {
     });
     await expect(provider.verify('missing@example.test', 'synthetic password')).resolves.toBeNull();
   });
+
+  it.each([
+    '$scrypt$16384$8$1$00$zz',
+    '$scrypt$16384$8$1$00112233445566778899aabbccddeeff$',
+    '$scrypt$32768$8$1$00112233445566778899aabbccddeeff$' + '00'.repeat(64),
+    '$argon2$16384$8$1$00112233445566778899aabbccddeeff$' + '00'.repeat(64),
+  ])('rejects a malformed or unsupported stored hash: %s', async (encoded) => {
+    await expect(verifyPassword('any password', encoded)).resolves.toBe(false);
+  });
 });

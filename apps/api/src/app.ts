@@ -39,20 +39,20 @@ import {
   IdempotencyConflictError,
   StateConflictError,
 } from '@goalpilot/data-access';
+import { compareVehicles, generateContributionDates } from '@goalpilot/domain';
+import { createLogger, safeErrorContext } from '@goalpilot/observability';
+import type { Clock, RateProvider } from '@goalpilot/provider-ports';
 import {
-  compareVehicles,
-  generateContributionDates,
-  illustrativeAssumptions,
-} from '@goalpilot/domain';
-import { createLogger } from '@goalpilot/observability';
-import {
+  PersistedApplicationClock,
   SimulatedContributionProvider,
   SimulatedGoalAccountProvider,
+  StaticRateProvider,
 } from '@goalpilot/provider-simulators';
 
 import type { AppConfiguration } from './config.js';
 import {
   AppError,
+  AuthenticationRequiredError,
   ConflictAppError,
   ForbiddenOperationError,
   ResourceNotFoundError,
@@ -72,6 +72,8 @@ import {
 interface AppDependencies {
   readonly configuration: AppConfiguration;
   readonly database: DatabaseClient;
+  readonly clock?: Clock;
+  readonly rateProvider?: RateProvider;
 }
 
 const goalIdParameters = z.object({ goalId: z.string().length(26) });
@@ -92,6 +94,8 @@ type GoalPilotApp = FastifyInstance<
 export async function buildApp(dependencies: AppDependencies): Promise<GoalPilotApp> {
   const { configuration, database } = dependencies;
   const repository = new GoalPilotRepository(database);
+  const clock = dependencies.clock ?? new PersistedApplicationClock(repository);
+  const rateProvider = dependencies.rateProvider ?? new StaticRateProvider();
   const authProvider = new LocalAuthProvider(repository);
   const goalAccountProvider = new SimulatedGoalAccountProvider(repository);
   const contributionProvider = new SimulatedContributionProvider(repository);
@@ -203,7 +207,10 @@ export async function buildApp(dependencies: AppDependencies): Promise<GoalPilot
       });
       return;
     }
-    request.log.error({ err: error, requestId: request.id }, 'Unexpected request failure');
+    request.log.error(
+      { ...safeErrorContext(error), requestId: request.id },
+      'Unexpected request failure',
+    );
     void reply.status(500).send({
       error: {
         code: 'INTERNAL_ERROR',
@@ -224,17 +231,21 @@ export async function buildApp(dependencies: AppDependencies): Promise<GoalPilot
     }
   });
 
-  app.get('/api/v1/vehicle-catalog', () => ({
-    assumptionVersion: illustrativeAssumptions[0]?.assumptionVersion ?? 'missing',
-    vehicles: illustrativeAssumptions,
-  }));
+  app.get('/api/v1/vehicle-catalog', async () => {
+    const asOfDate = await clock.today();
+    const vehicles = await rateProvider.getCatalog(asOfDate);
+    return {
+      assumptionVersion: vehicles[0]?.assumptionVersion ?? 'missing',
+      vehicles,
+    };
+  });
 
   app.post('/api/v1/previews', { schema: { body: previewInputSchema } }, async (request) => {
     const { asOfDate: explicitDate, ...goalFields } = request.body;
-    const asOfDate = explicitDate ?? (await repository.getApplicationDate());
+    const asOfDate = explicitDate ?? (await clock.today());
     const goal = goalInputSchema.parse(goalFields);
     try {
-      return compareVehicles(goal, asOfDate, illustrativeAssumptions);
+      return compareVehicles(goal, asOfDate, await rateProvider.getCatalog(asOfDate));
     } catch (error) {
       if (error instanceof RangeError) throw new ValidationAppError(error.message);
       throw error;
@@ -269,7 +280,8 @@ export async function buildApp(dependencies: AppDependencies): Promise<GoalPilot
     },
     async (request, reply) => {
       const user = await authProvider.verify(request.body.email, request.body.password);
-      if (user === null) throw new ConflictAppError('The email or password is incorrect.');
+      if (user === null)
+        throw new AuthenticationRequiredError('The email or password is incorrect.');
       const oldToken = request.cookies[sessionCookieName];
       if (oldToken !== undefined) await repository.deleteSession(sha256(oldToken));
       const csrfToken = await issueSession(repository, configuration, user.id, reply);
@@ -301,7 +313,7 @@ export async function buildApp(dependencies: AppDependencies): Promise<GoalPilot
     async (request, reply) => {
       const user = await requireUser(request, repository);
       try {
-        if (request.body.targetDate < (await repository.getApplicationDate()))
+        if (request.body.targetDate < (await clock.today()))
           throw new ValidationAppError('Target date cannot be before the application date.');
         const result = await repository.createGoalIdempotent({
           userId: user.id,
@@ -325,7 +337,7 @@ export async function buildApp(dependencies: AppDependencies): Promise<GoalPilot
     const goal = await repository.getGoal(user.id, request.params.goalId);
     if (goal === null) throw new ResourceNotFoundError();
     const storedAccount = await goalAccountProvider.summary(user.id, goal.id);
-    const applicationDate = await repository.getApplicationDate();
+    const applicationDate = await clock.today();
     const account =
       storedAccount === null
         ? null
@@ -341,7 +353,7 @@ export async function buildApp(dependencies: AppDependencies): Promise<GoalPilot
                       currentSavedCents: storedAccount.currentLedgerBalanceCents,
                     },
                     applicationDate,
-                    illustrativeAssumptions,
+                    await rateProvider.getCatalog(applicationDate),
                   ).vehicles.find((vehicle) => vehicle.vehicleCode === storedAccount.vehicleCode)
                     ?.projectedCompletionDate ?? null),
           };
@@ -377,7 +389,7 @@ export async function buildApp(dependencies: AppDependencies): Promise<GoalPilot
         notes: existing.notes,
       });
       const merged = goalInputSchema.parse({ ...existingInput, ...changes });
-      if (merged.targetDate < (await repository.getApplicationDate()))
+      if (merged.targetDate < (await clock.today()))
         throw new ValidationAppError('Target date cannot be before the application date.');
       const updated = await repository.updateGoal(user.id, existing.id, merged, version);
       if (updated === null) throw new ConflictAppError('The goal changed. Refresh and try again.');
@@ -403,8 +415,8 @@ export async function buildApp(dependencies: AppDependencies): Promise<GoalPilot
       const user = await requireUser(request, repository);
       const goal = await repository.getGoal(user.id, request.params.goalId);
       if (goal === null) throw new ResourceNotFoundError();
-      const asOfDate = await repository.getApplicationDate();
-      const projection = compareVehicles(goal, asOfDate, illustrativeAssumptions);
+      const asOfDate = await clock.today();
+      const projection = compareVehicles(goal, asOfDate, await rateProvider.getCatalog(asOfDate));
       const selected = projection.vehicles.find(
         (vehicle) => vehicle.vehicleCode === request.body.vehicleCode,
       );
@@ -493,7 +505,7 @@ export async function buildApp(dependencies: AppDependencies): Promise<GoalPilot
       if ((await repository.getGoal(user.id, request.params.goalId)) === null)
         throw new ResourceNotFoundError();
       const key = request.headers['idempotency-key'];
-      if (request.body.effectiveDate !== (await repository.getApplicationDate()))
+      if (request.body.effectiveDate !== (await clock.today()))
         throw new ValidationAppError(
           'Simulated contributions must use the current application date.',
         );
@@ -518,11 +530,6 @@ export async function buildApp(dependencies: AppDependencies): Promise<GoalPilot
       return reply.status(result.duplicate ? 200 : 201).send(result);
     },
   );
-
-  app.get('/api/v1/data-export', async (request) => {
-    const user = await requireUser(request, repository);
-    return repository.exportUserData(user.id);
-  });
 
   app.post('/api/v1/data-exports', async (request, reply) => {
     const user = await requireUser(request, repository);

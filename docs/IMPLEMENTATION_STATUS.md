@@ -21,21 +21,21 @@ uses port 55432. The committed clean-checkout default remains `localhost:5432`.
 
 ## Exact release evidence
 
-| Command                                                                                   | Result                                                                                                                     |
-| ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm run setup` (run twice)                                                              | PASS; frozen install, Docker PostgreSQL, migrations, deterministic seed, and diagnostics all repeated safely               |
-| `pnpm run doctor`                                                                         | PASS; Node 24.19.0, pnpm 11.22.0, Docker, environment, and database                                                        |
-| `docker build --file .devcontainer/Dockerfile --tag goalpilot-devcontainer-check:local .` | PASS                                                                                                                       |
-| Dev Container runtime probe                                                               | PASS; Node 24.19.0, pnpm 11.22.0, Git 2.39.5, PostgreSQL client 15.19                                                      |
-| `pnpm dev` plus HTTP probes                                                               | PASS; web 200, live/ready both healthy, API docs 200                                                                       |
-| `pnpm db:reset --yes` then migrate twice, seed, verify                                    | PASS; 3 ordered migrations and 15 public tables                                                                            |
-| `pnpm demo:advance --days 30` then same-date replay                                       | PASS; 2026-08-23 to 2026-09-22, no failures, replay produced no work                                                       |
-| `pnpm verify`                                                                             | PASS; format, zero-warning lint, strict types, 47 tests, builds, migrations, secret scan, production audit, CycloneDX SBOM |
-| `pnpm test:coverage`                                                                      | PASS; API 88.85%, data 94.11%, and domain 95.33% line coverage; domain branches 85.84%                                     |
-| `PLAYWRIGHT_CHANNEL=chrome pnpm test:e2e`                                                 | PASS; 2/2 journeys, 360/768/1024/1440 widths, no Axe violations                                                            |
+| Command                                                                                   | Result                                                                                                        |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `pnpm run setup` (run twice)                                                              | PASS; frozen install, Docker PostgreSQL, migrations, deterministic seed, and diagnostics all repeated safely  |
+| `pnpm run doctor`                                                                         | PASS; Node 24.19.0, pnpm 11.22.0, Docker, environment, and database                                           |
+| `docker build --file .devcontainer/Dockerfile --tag goalpilot-devcontainer-check:local .` | PASS                                                                                                          |
+| Dev Container runtime probe                                                               | PASS; Node 24.19.0, pnpm 11.22.0, Git 2.39.5, PostgreSQL client 15.19                                         |
+| `pnpm dev` plus HTTP probes                                                               | PASS; web 200, live/ready both healthy, API docs 200                                                          |
+| non-destructive developer migrate twice, seed, verify                                     | PASS; 4 checksum-verified migrations, 15 public tables, and 4 reviewed assumptions                            |
+| `pnpm demo:advance --days 30` then same-date replay                                       | PASS; 2026-08-23 to 2026-09-22, no failures, replay produced no work                                          |
+| `pnpm verify`                                                                             | PASS; format, lint, types, 64 tests with coverage gates, builds, DB verification, scans/audit, CycloneDX SBOM |
+| coverage inside `pnpm verify`                                                             | PASS; API 91.37%, data 94.58%, domain 95.94% lines; domain branches 86.60%                                    |
+| `PLAYWRIGHT_CHANNEL=chrome pnpm test:e2e`                                                 | PASS; 2/2 journeys; principal states checked with Axe and 360/768/1024/1440 overflow checks                   |
 
-Production bundles built successfully: web JavaScript 408.53 kB (124.30 kB gzip), web CSS 21.45
-kB (5.85 kB gzip), and compiled Fastify/package outputs. The production dependency audit reported
+Production bundles built successfully: web JavaScript 409.27 kB (124.47 kB gzip), web CSS 21.58
+kB (5.88 kB gzip), and compiled Fastify/package outputs. The production dependency audit reported
 no known vulnerabilities. The SBOM is generated at ignored path `artifacts/sbom.cdx.json`.
 
 ## Review resolution
@@ -53,7 +53,12 @@ were completed. Actionable findings were resolved, including:
   regressions, loading/network/error states, stale-preview invalidation, mobile navigation, focus,
   contrast, and chart alternatives;
 - real Playwright/Axe journeys, local p95 performance assertions, repeatable setup/recovery, and CI
-  pnpm initialization.
+  pnpm initialization;
+- strict stored-hash parsing, safe unexpected-error logging, normalized destructive database
+  guards, complete relational provenance constraints, exact catalog verification, and coverage in
+  the canonical release gate;
+- fixed-term opening locks, policy-correct interest posting, exact four-vehicle vectors, dedicated
+  E2E ports, accessible contribution failures, header contrast, and 360-pixel dashboard layout.
 
 ## Known boundaries and blockers
 
@@ -63,11 +68,17 @@ were completed. Actionable findings were resolved, including:
 - Illustrative rates are a static versioned catalog and are not offers.
 - The local Playwright browser download stalled on this workstation, so the release run used the
   installed stable Chrome channel. CI retains pinned Playwright Chromium installation.
-- Genuine blockers: none for the local MVP. M19+ requires explicit authorization and is outside
-  this session.
+- The host's unrelated global `%APPDATA%\npm\pnpm.ps1` is malformed. Verified host commands used
+  the repository-pinned `corepack pnpm`; the Dev Container's pnpm installation is healthy.
+- The Docker Dev Container image and runtime toolchain were executed successfully. A full VS Code
+  Dev Container editor attach/open was not executed because the Dev Container CLI is unavailable
+  on this workstation.
+- Genuine code blockers: none for the audited local MVP. M19+ requires explicit authorization and
+  remains outside this session.
 
 ## Next task
 
-No required local milestone remains. Preserve the hard gate and begin M19 architecture adaptation
-only after explicit authorization; broader UX research and additional component-level tests are
-optional local follow-up, not release blockers.
+Preserve the hard gate. Continue with evidence-driven local product iteration—goal editing and plan
+history, richer Autopilot controls, dashboard insights, additional component tests, and user
+research—before considering M19. AWS architecture adaptation begins only after explicit separate
+authorization.

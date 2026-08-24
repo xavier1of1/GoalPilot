@@ -42,24 +42,18 @@ export async function hashPassword(password: string, salt = randomBytes(16)): Pr
 }
 
 export async function verifyPassword(password: string, encoded: string): Promise<boolean> {
-  const [, algorithm, costText, blockText, parallelText, saltHex, expectedHex] = encoded.split('$');
-  if (
-    algorithm !== 'scrypt' ||
-    costText === undefined ||
-    blockText === undefined ||
-    parallelText === undefined ||
-    saltHex === undefined ||
-    expectedHex === undefined
-  )
-    return false;
+  const parsed = /^\$scrypt\$16384\$8\$1\$([0-9a-f]{32})\$([0-9a-f]{128})$/.exec(encoded);
+  if (parsed === null) return false;
+  const [, saltHex, expectedHex] = parsed;
+  if (saltHex === undefined || expectedHex === undefined) return false;
   const expected = Buffer.from(expectedHex, 'hex');
-  const actual = await deriveKey(password, Buffer.from(saltHex, 'hex'), expected.length, {
-    N: Number(costText),
-    r: Number(blockText),
-    p: Number(parallelText),
+  const actual = await deriveKey(password, Buffer.from(saltHex, 'hex'), keyLength, {
+    N: scryptCost,
+    r: 8,
+    p: 1,
     maxmem: 64 * 1024 * 1024,
   });
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
+  return timingSafeEqual(actual, expected);
 }
 
 export class LocalAuthProvider implements AuthProvider {

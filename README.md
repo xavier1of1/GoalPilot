@@ -57,8 +57,17 @@ pnpm build
 pnpm 11 reserves `setup` and `doctor` as native command names, so the GoalPilot bootstrap and
 environment diagnostics use the explicit `pnpm run …` form.
 
-`pnpm db:reset` destroys and recreates only a database whose URL resolves to localhost and whose
-name contains `goalpilot_local` or `goalpilot_test`. It refuses all other targets.
+Every command can be invoked as `corepack pnpm <command>` to force the repository-pinned pnpm. On
+this audited Windows host, the unrelated global `%APPDATA%\npm\pnpm.ps1` shim is malformed, so the
+verified host commands used `corepack pnpm`; the Dev Container has a clean pinned pnpm shim.
+
+`pnpm db:reset` destroys and recreates only a database whose URL resolves to loopback and whose
+name is exactly `goalpilot_local` (or exactly `goalpilot_test` in test mode). It refuses all other
+targets. The test bootstrap also normalizes host, port, user, and database identity before proving
+that development and test targets differ.
+
+Playwright uses dedicated test ports 3100/5273, so `pnpm test:e2e` can run while the normal
+3000/5173 development servers are open.
 
 See [local development](docs/LOCAL_DEVELOPMENT.md), [architecture](docs/ARCHITECTURE.md),
 [security](docs/SECURITY.md), and [testing](docs/TESTING.md).

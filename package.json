@@ -35,7 +35,7 @@
     "presbom": "node -e \"require('node:fs').mkdirSync('artifacts',{recursive:true})\"",
     "sbom": "pnpm sbom --sbom-format cyclonedx --sbom-spec-version 1.5 --out artifacts/sbom.cdx.json",
     "audit:prod": "pnpm audit --prod --audit-level high",
-    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm db:verify && pnpm security:scan && pnpm audit:prod && pnpm run sbom"
+    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm build && pnpm db:verify && pnpm security:scan && pnpm audit:prod && pnpm run sbom"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.10.2",

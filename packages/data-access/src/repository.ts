@@ -449,7 +449,10 @@ export class GoalPilotRepository {
         (vehicle) => vehicle.vehicleCode === input.vehicleCode,
       );
       if (!selected?.eligible) throw new Error('Selected vehicle is ineligible.');
-      const purchaseReady = input.goal.currentSavedCents >= input.goal.targetAmountCents;
+      const funded = input.goal.currentSavedCents >= input.goal.targetAmountCents;
+      const fixedTerm =
+        input.vehicleCode === 'cd_ladder' || input.vehicleCode === 'treasury_ladder';
+      const purchaseReady = funded && !fixedTerm;
       const updated = await transaction<{ id: string }[]>`
         UPDATE goals SET status = ${purchaseReady ? 'purchase_ready' : 'active'},
           version = version + 1, updated_at = now()
@@ -477,7 +480,7 @@ export class GoalPilotRepository {
         ) VALUES (
           ${accountId}, ${input.goal.id}, ${input.userId}, ${planId},
           ${purchaseReady ? 'purchase_ready' : 'active'},
-          ${purchaseReady ? null : input.nextContributionDate}, ${input.asOfDate}, ${input.asOfDate}
+          ${funded ? null : input.nextContributionDate}, ${input.asOfDate}, ${input.asOfDate}
         )
       `;
       await transaction`

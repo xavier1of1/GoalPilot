@@ -10,6 +10,11 @@ Helmet headers, payload and rate limits, safe error envelopes with request IDs, 
 Local insecure cookies and simulator/auth modes are accepted only with loopback URLs; staging and
 production startup is rejected.
 
+Stored scrypt hashes use a strict fixed grammar and fail closed before key derivation if corrupt or
+unsupported. Unexpected exceptions are reduced to a safe type classification; raw exception
+messages and stacks are not logged. Destructive database scripts require exact role-specific local
+database names and compare normalized target identities before a test reset.
+
 Ledger, plan, and assumption mutation triggers protect financial history. Idempotency records use a
 request hash and advisory transaction lock so a key cannot silently replay a different request.
 Deletion cascades financial data and sessions while pseudonymizing retained security audit events.

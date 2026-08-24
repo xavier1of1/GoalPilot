@@ -41,7 +41,9 @@ export function DashboardPage(): React.JSX.Element {
   const [amount, setAmount] = useState('100');
   const [effectiveDate, setEffectiveDate] = useState('2026-08-23');
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [contributionError, setContributionError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
   const contributionKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (detailQuery.data?.applicationDate !== undefined)
@@ -86,9 +88,18 @@ export function DashboardPage(): React.JSX.Element {
     },
     onSuccess: async () => {
       contributionKeyRef.current = null;
+      setContributionError(null);
       setActionMessage('Your simulated contribution posted successfully.');
       dialogRef.current?.close();
       await refresh();
+    },
+    onError: (mutationError) => {
+      setContributionError(
+        mutationError instanceof Error
+          ? mutationError.message
+          : 'The simulated contribution could not be posted.',
+      );
+      requestAnimationFrame(() => amountRef.current?.focus());
     },
   });
   const error = [
@@ -96,7 +107,6 @@ export function DashboardPage(): React.JSX.Element {
     detailQuery.error,
     activityQuery.error,
     actionMutation.error,
-    contributionMutation.error,
   ].find((value): value is Error => value instanceof Error);
 
   if (goalsQuery.isPending) return <DashboardSkeleton />;
@@ -104,6 +114,8 @@ export function DashboardPage(): React.JSX.Element {
   if (detailQuery.isPending) return <DashboardSkeleton />;
   const detail = detailQuery.data;
   const account = detail?.account;
+  const lifetimeFundingCents =
+    (account?.principalContributedCents ?? 0) + (account?.interestEarnedCents ?? 0);
 
   return (
     <section className="dashboard-shell">
@@ -114,7 +126,14 @@ export function DashboardPage(): React.JSX.Element {
           <p className="muted">A current view of your simulated route and its assumptions.</p>
         </div>
         {account?.status === 'active' && (
-          <button className="button" type="button" onClick={() => dialogRef.current?.showModal()}>
+          <button
+            className="button"
+            type="button"
+            onClick={() => {
+              setContributionError(null);
+              dialogRef.current?.showModal();
+            }}
+          >
             <Plus aria-hidden="true" size={18} /> Add simulated contribution
           </button>
         )}
@@ -246,7 +265,7 @@ export function DashboardPage(): React.JSX.Element {
           <article className="chart-card">
             <div className="card-heading-row">
               <div>
-                <p className="eyebrow">Balance composition</p>
+                <p className="eyebrow">Lifetime funding composition</p>
                 <h2>Principal stays distinct from modeled interest.</h2>
               </div>
             </div>
@@ -255,13 +274,13 @@ export function DashboardPage(): React.JSX.Element {
                 <span
                   className="composition-principal"
                   style={{
-                    width: `${String(account.currentLedgerBalanceCents === 0 ? 0 : (account.principalContributedCents / account.currentLedgerBalanceCents) * 100)}%`,
+                    width: `${String(lifetimeFundingCents === 0 ? 0 : (account.principalContributedCents / lifetimeFundingCents) * 100)}%`,
                   }}
                 />
                 <span className="composition-interest" />
               </div>
               <p className="sr-only">
-                Current balance is {formatMoney(account.currentLedgerBalanceCents)}:{' '}
+                Lifetime funding is {formatMoney(lifetimeFundingCents)}:{' '}
                 {formatMoney(account.principalContributedCents)} principal and{' '}
                 {formatMoney(account.interestEarnedCents)} modeled interest.
               </p>
@@ -366,20 +385,32 @@ export function DashboardPage(): React.JSX.Element {
           <p className="eyebrow">Simulation only</p>
           <h2 id="contribution-title">Add a simulated contribution</h2>
           <p>No money will move. This adds an auditable entry to the local ledger.</p>
-          <label>
+          <label htmlFor="contribution-amount">
             Amount
             <span className="input-prefix">
               <span aria-hidden="true">$</span>
               <input
+                id="contribution-amount"
+                ref={amountRef}
                 value={amount}
                 inputMode="decimal"
-                onChange={(event) => setAmount(event.target.value)}
+                aria-invalid={contributionError === null ? undefined : true}
+                aria-describedby={contributionError === null ? undefined : 'contribution-error'}
+                onChange={(event) => {
+                  setAmount(event.target.value);
+                  setContributionError(null);
+                }}
               />
             </span>
           </label>
-          <label>
+          {contributionError !== null && (
+            <p className="field-error" id="contribution-error" role="alert">
+              {contributionError}
+            </p>
+          )}
+          <label htmlFor="contribution-effective-date">
             Effective date
-            <input type="date" value={effectiveDate} readOnly />
+            <input id="contribution-effective-date" type="date" value={effectiveDate} readOnly />
           </label>
           <div className="dialog-actions">
             <button
@@ -393,7 +424,22 @@ export function DashboardPage(): React.JSX.Element {
               className="button"
               type="button"
               disabled={contributionMutation.isPending}
-              onClick={() => contributionMutation.mutate()}
+              onClick={() => {
+                try {
+                  const amountCents = dollarsToCents(amount);
+                  if (amountCents < 1 || amountCents > 100_000_000)
+                    throw new Error('Enter an amount between $0.01 and $1,000,000.');
+                  setContributionError(null);
+                  contributionMutation.mutate();
+                } catch (validationError) {
+                  setContributionError(
+                    validationError instanceof Error
+                      ? validationError.message
+                      : 'Enter a valid dollar amount.',
+                  );
+                  requestAnimationFrame(() => amountRef.current?.focus());
+                }
+              }}
             >
               {contributionMutation.isPending ? 'Posting…' : 'Post simulated contribution'}
             </button>

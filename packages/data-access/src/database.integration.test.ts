@@ -32,6 +32,7 @@ describe('PostgreSQL migration and ownership constraints', () => {
       '202608230001_local_mvp.sql',
       '202608230002_allow_ledger_cascade_purge.sql',
       '202608230003_financial_integrity.sql',
+      '202608230004_relational_integrity.sql',
     ]);
     expect(tables.map((row) => row.table_name)).toEqual(
       expect.arrayContaining([
@@ -102,6 +103,96 @@ describe('PostgreSQL migration and ownership constraints', () => {
     await repository.deleteGoal('01K3C8ALEX0000000000000000', goal.id);
   });
 
+  it('binds accounts to a plan for the same goal', async () => {
+    const userId = '01K3C8ALEX0000000000000000';
+    const first = await repository.createGoal(userId, {
+      name: 'Plan relationship fixture one',
+      targetAmountCents: 100_000,
+      currentSavedCents: 10_000,
+      targetDate: '2027-08-23',
+      recurringContributionCents: 10_000,
+      contributionCadence: 'monthly',
+      liquidityNeed: 'anytime',
+      preservationPreference: 'required',
+      confidence: 'expected',
+    });
+    const second = await repository.createGoal(userId, {
+      name: 'Plan relationship fixture two',
+      targetAmountCents: 120_000,
+      currentSavedCents: 10_000,
+      targetDate: '2027-08-23',
+      recurringContributionCents: 10_000,
+      contributionCadence: 'monthly',
+      liquidityNeed: 'anytime',
+      preservationPreference: 'required',
+      confidence: 'expected',
+    });
+    const planId = ulid();
+    await database`
+      INSERT INTO plan_versions (
+        id, goal_id, user_id, version, vehicle_code, assumption_version,
+        normalized_input, calculation_output
+      ) VALUES (
+        ${planId}, ${first.id}, ${userId}, 1, 'cash', 'demo-2026-08-v1',
+        '{}'::jsonb, '{}'::jsonb
+      )
+    `;
+    await expect(
+      database`
+        INSERT INTO simulated_accounts (
+          id, goal_id, user_id, plan_version_id, status, last_processed_date, last_accrual_date
+        ) VALUES (
+          ${ulid()}, ${second.id}, ${userId}, ${planId}, 'active', '2026-08-23', '2026-08-23'
+        )
+      `,
+    ).rejects.toMatchObject({ code: '23503' });
+    await repository.deleteGoal(userId, first.id);
+    await repository.deleteGoal(userId, second.id);
+  });
+
+  it('binds a plan assumption version to the selected vehicle', async () => {
+    const userId = '01K3C8ALEX0000000000000000';
+    const goal = await repository.createGoal(userId, {
+      name: 'Assumption relationship fixture',
+      targetAmountCents: 100_000,
+      currentSavedCents: 10_000,
+      targetDate: '2027-08-23',
+      recurringContributionCents: 10_000,
+      contributionCadence: 'monthly',
+      liquidityNeed: 'anytime',
+      preservationPreference: 'required',
+      confidence: 'expected',
+    });
+    await database`
+      INSERT INTO vehicle_assumption_versions (
+        version, effective_date, reviewed_date, source_type, is_live
+      ) VALUES (
+        'test-cash-only-v1', '2026-08-01', '2026-08-23',
+        'reviewed_demo_assumption', false
+      ) ON CONFLICT DO NOTHING
+    `;
+    await database`
+      INSERT INTO vehicle_assumptions (
+        version, vehicle_code, display_name, apy_basis_points, liquidity_days,
+        lock_days, minimum_cents, source_label, enabled
+      ) VALUES (
+        'test-cash-only-v1', 'cash', 'Test cash only', 0, 0, 0, 0, 'Test fixture', true
+      ) ON CONFLICT DO NOTHING
+    `;
+    await expect(
+      database`
+        INSERT INTO plan_versions (
+          id, goal_id, user_id, version, vehicle_code, assumption_version,
+          normalized_input, calculation_output
+        ) VALUES (
+          ${ulid()}, ${goal.id}, ${userId}, 1, 'hysa', 'test-cash-only-v1',
+          '{}'::jsonb, '{}'::jsonb
+        )
+      `,
+    ).rejects.toMatchObject({ code: '23503' });
+    await repository.deleteGoal(userId, goal.id);
+  });
+
   it('keeps illustrative assumptions immutable', async () => {
     await expect(
       database`
@@ -159,5 +250,85 @@ describe('PostgreSQL migration and ownership constraints', () => {
       'ledger entries are append-only',
     );
     await repository.deleteGoal(userId, goal.id);
+  });
+
+  it('binds reversals and posting periods to their own account', async () => {
+    const userId = '01K3C8ALEX0000000000000000';
+    const createAccount = async (name: string, version: number) => {
+      const goal = await repository.createGoal(userId, {
+        name,
+        targetAmountCents: 100_000,
+        currentSavedCents: 10_000,
+        targetDate: '2027-08-23',
+        recurringContributionCents: 10_000,
+        contributionCadence: 'monthly',
+        liquidityNeed: 'anytime',
+        preservationPreference: 'required',
+        confidence: 'expected',
+      });
+      const planId = ulid();
+      const accountId = ulid();
+      const ledgerId = ulid();
+      await database`
+        INSERT INTO plan_versions (
+          id, goal_id, user_id, version, vehicle_code, assumption_version,
+          normalized_input, calculation_output
+        ) VALUES (
+          ${planId}, ${goal.id}, ${userId}, ${version}, 'cash', 'demo-2026-08-v1',
+          '{}'::jsonb, '{}'::jsonb
+        )
+      `;
+      await database`
+        INSERT INTO simulated_accounts (
+          id, goal_id, user_id, plan_version_id, status, last_processed_date, last_accrual_date
+        ) VALUES (
+          ${accountId}, ${goal.id}, ${userId}, ${planId}, 'active', '2026-08-23', '2026-08-23'
+        )
+      `;
+      await database`
+        INSERT INTO ledger_entries (
+          id, account_id, user_id, entry_type, principal_cents, effective_date, description
+        ) VALUES (
+          ${ledgerId}, ${accountId}, ${userId}, 'account_opened', 10000,
+          '2026-08-23', 'Relational integrity opening'
+        )
+      `;
+      return { goal, accountId, ledgerId };
+    };
+    const first = await createAccount('Ledger relationship fixture one', 1);
+    const second = await createAccount('Ledger relationship fixture two', 1);
+
+    await expect(
+      database`
+        INSERT INTO ledger_entries (
+          id, account_id, user_id, entry_type, principal_cents, effective_date,
+          description, reverses_entry_id
+        ) VALUES (
+          ${ulid()}, ${second.accountId}, ${userId}, 'reversal', -100,
+          '2026-08-24', 'Invalid cross-account reversal', ${first.ledgerId}
+        )
+      `,
+    ).rejects.toMatchObject({ code: '23503' });
+    await expect(
+      database`
+        INSERT INTO interest_posting_periods (
+          account_id, user_id, period_end, ledger_entry_id
+        ) VALUES (
+          ${second.accountId}, ${userId}, '2026-08-31', ${first.ledgerId}
+        )
+      `,
+    ).rejects.toMatchObject({ code: '23503' });
+    await database`
+      INSERT INTO interest_posting_periods (account_id, user_id, period_end, ledger_entry_id)
+      VALUES (${first.accountId}, ${userId}, '2026-08-31', ${first.ledgerId})
+    `;
+
+    await repository.deleteGoal(userId, first.goal.id);
+    await repository.deleteGoal(userId, second.goal.id);
+    const remaining = await database<{ count: string }[]>`
+      SELECT count(*) AS count FROM interest_posting_periods
+      WHERE ledger_entry_id = ${first.ledgerId}
+    `;
+    expect(Number(remaining[0]?.count ?? -1)).toBe(0);
   });
 });

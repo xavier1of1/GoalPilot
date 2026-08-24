@@ -25,7 +25,7 @@ function containerDatabaseUrl(
 ): string | undefined {
   if (value === undefined || !inDevContainer) return value;
   const parsed = new URL(value);
-  if (['localhost', '127.0.0.1', '::1'].includes(parsed.hostname))
+  if (['localhost', '127.0.0.1', '::1'].includes(parsed.hostname.replace(/^\[|\]$/g, '')))
     parsed.hostname = 'host.docker.internal';
   return parsed.toString();
 }
@@ -58,7 +58,7 @@ export function loadConfiguration(environment: NodeJS.ProcessEnv = process.env):
     ['API_ORIGIN', parsed.API_ORIGIN],
     ['DATABASE_URL', parsed.DATABASE_URL],
   ] as const) {
-    if (!loopbackHosts.has(new URL(value).hostname))
+    if (!loopbackHosts.has(new URL(value).hostname.replace(/^\[|\]$/g, '').toLowerCase()))
       throw new Error(`${name} must use a loopback host in the local MVP.`);
   }
   return Object.freeze(parsed);

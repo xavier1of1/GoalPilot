@@ -135,6 +135,9 @@ p {
   font-weight: 620;
   color: #36433e;
 }
+.nav a.button {
+  color: white;
+}
 .nav a.active:not(.button),
 .nav a:hover:not(.button) {
   color: var(--green-800);
@@ -1187,6 +1190,13 @@ td span {
 }
 
 @media (max-width: 420px) {
+  .progress-card .card-heading-row {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .dashboard-balance {
+    font-size: clamp(2.5rem, 13vw, 3rem);
+  }
   .metric-grid {
     grid-template-columns: 1fr;
   }

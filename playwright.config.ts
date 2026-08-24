@@ -9,7 +9,7 @@ export default defineConfig({
   expect: { timeout: 8_000 },
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'http://localhost:5273',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -27,14 +27,16 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'cross-env ENVIRONMENT=test NODE_ENV=test pnpm --filter @goalpilot/api dev',
-      url: 'http://localhost:3000/health/ready',
+      command:
+        'cross-env ENVIRONMENT=test NODE_ENV=test API_PORT=3100 API_ORIGIN=http://localhost:3100 WEB_ORIGIN=http://localhost:5273 pnpm --filter @goalpilot/api dev',
+      url: 'http://localhost:3100/health/ready',
       reuseExistingServer: false,
       timeout: 60_000,
     },
     {
-      command: 'pnpm --filter @goalpilot/web dev',
-      url: 'http://localhost:5173',
+      command:
+        'cross-env GOALPILOT_WEB_PORT=5273 GOALPILOT_API_PROXY_ORIGIN=http://localhost:3100 pnpm --filter @goalpilot/web dev',
+      url: 'http://localhost:5273',
       reuseExistingServer: false,
       timeout: 60_000,
     },

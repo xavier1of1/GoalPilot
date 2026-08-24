@@ -139,6 +139,43 @@ describe('controlled Demo Autopilot', () => {
     }
   });
 
+  it('does not post deposit interest when a contribution alone reaches the target', async () => {
+    const goal = await activate(
+      {
+        name: 'Autopilot posting boundary fixture',
+        targetAmountCents: 100_000,
+        currentSavedCents: 99_999,
+        targetDate: '2026-12-31',
+        recurringContributionCents: 1,
+        contributionCadence: 'weekly',
+        liquidityNeed: 'goal_date',
+        preservationPreference: 'required',
+        confidence: 'expected',
+      },
+      'hysa',
+    );
+    try {
+      const targetCrossing = await processDemoAutopilot(repository, '2026-08-30');
+      expect(targetCrossing).toMatchObject({
+        contributionsPosted: 1,
+        interestPostings: 0,
+        failures: [],
+      });
+      const crossingActivity = await repository.getActivity(alexId, goal.id);
+      expect(crossingActivity.some((entry) => entry.type === 'interest_posted')).toBe(false);
+
+      const monthEnd = await processDemoAutopilot(repository, '2026-08-31');
+      expect(monthEnd).toMatchObject({ interestPostings: 1, failures: [] });
+      await expect(repository.getAccountSummary(alexId, goal.id)).resolves.toMatchObject({
+        status: 'purchase_ready',
+        principalContributedCents: 100_000,
+      });
+    } finally {
+      await repository.deleteGoal(alexId, goal.id);
+      await database`UPDATE application_clock SET application_date = ${initialDate}`;
+    }
+  });
+
   it('keeps funded fixed-term principal locked until the goal date', async () => {
     const goal = await activate(
       {
@@ -175,6 +212,39 @@ describe('controlled Demo Autopilot', () => {
       await expect(repository.getAccountSummary(alexId, goal.id)).resolves.toMatchObject({
         assumptionReviewedDate: '2026-08-23',
         assumptionIsStale: true,
+      });
+    } finally {
+      await repository.deleteGoal(alexId, goal.id);
+      await database`UPDATE application_clock SET application_date = ${initialDate}`;
+    }
+  });
+
+  it('keeps an already-funded fixed-term opening active until its target date', async () => {
+    const goal = await activate(
+      {
+        name: 'Autopilot funded opening lock fixture',
+        targetAmountCents: 100_000,
+        currentSavedCents: 100_000,
+        targetDate: '2027-08-23',
+        recurringContributionCents: 0,
+        contributionCadence: 'monthly',
+        liquidityNeed: 'goal_date',
+        preservationPreference: 'required',
+        confidence: 'expected',
+      },
+      'cd_ladder',
+    );
+    try {
+      await expect(repository.getAccountSummary(alexId, goal.id)).resolves.toMatchObject({
+        status: 'active',
+        availableBalanceCents: 0,
+        nextContributionDate: null,
+        projectedCompletionDate: '2027-08-23',
+      });
+      const target = await processDemoAutopilot(repository, goal.targetDate);
+      expect(target).toMatchObject({ purchaseReadyTransitions: 1, failures: [] });
+      await expect(repository.getAccountSummary(alexId, goal.id)).resolves.toMatchObject({
+        status: 'purchase_ready',
       });
     } finally {
       await repository.deleteGoal(alexId, goal.id);

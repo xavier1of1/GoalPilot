@@ -3,7 +3,10 @@ import { createDatabaseClient } from '@goalpilot/data-access';
 import { assertLocalDatabaseUrl, getDatabaseUrl } from './runtime-config.js';
 
 const databaseUrl = getDatabaseUrl();
-const parsed = assertLocalDatabaseUrl(databaseUrl);
+const parsed = assertLocalDatabaseUrl(
+  databaseUrl,
+  process.env['ENVIRONMENT'] === 'test' ? 'goalpilot_test' : 'goalpilot_local',
+);
 if (!process.argv.includes('--yes')) {
   process.stderr.write(
     `This destroys and recreates every schema object in local database "${parsed.pathname.slice(1)}".\n` +

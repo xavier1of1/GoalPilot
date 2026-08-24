@@ -135,14 +135,12 @@ function dailyDepositProjection(input: ProjectionInput): ProjectionNumbers {
 
   let date = addCalendarDays(input.asOfDate, 1);
   while (date <= input.goal.targetDate) {
-    let contributionReachedTarget = false;
     if (contributionDates.has(date)) {
       principalCents += input.contributionCents;
       balance = balance.plus(input.contributionCents);
-      contributionReachedTarget = balance.greaterThanOrEqualTo(input.goal.targetAmountCents);
     }
     accruedInterest = accruedInterest.plus(balance.times(dailyRate));
-    if (isMonthEnd(date) || date === input.goal.targetDate || contributionReachedTarget) {
+    if (isMonthEnd(date) || date === input.goal.targetDate) {
       const posted = accruedInterest.toDecimalPlaces(0, Decimal.ROUND_HALF_EVEN).toNumber();
       postedInterestCents += posted;
       balance = balance.plus(posted);
@@ -168,7 +166,7 @@ function maturityProjection(input: ProjectionInput): ProjectionNumbers {
       principalCents: input.goal.currentSavedCents,
       interestCents: 0,
       endingBalanceCents: input.goal.currentSavedCents,
-      completionDate: input.asOfDate,
+      completionDate: input.goal.targetDate,
     };
   }
   const contributionDates = new Set(

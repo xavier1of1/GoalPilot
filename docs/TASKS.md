@@ -69,7 +69,7 @@ presence alone.
 - M02 and M16: [security controls](SECURITY.md), [CI](../.github/workflows/ci.yml),
   [CodeQL](../.github/workflows/codeql.yml), and
   [security regressions](../tests/security/security-regressions.test.ts)
-- M03: [versioned migrations](../packages/data-access/migrations/202608230003_financial_integrity.sql)
+- M03: [versioned migrations](../packages/data-access/migrations/202608230004_relational_integrity.sql)
   and [database integration evidence](../packages/data-access/src/database.integration.test.ts)
 - M04 and M10: [responsive planner](../apps/web/src/pages/BuilderPage.tsx) and
   [consumer-finance visual system](../apps/web/src/styles.css)
