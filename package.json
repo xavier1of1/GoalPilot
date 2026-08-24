@@ -44,7 +44,7 @@
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm build && pnpm db:verify && pnpm security:scan && pnpm audit:prod && pnpm run sbom"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.10.2",
+    "@axe-core/playwright": "4.13.0",
     "@eslint/js": "10.0.1",
     "@goalpilot/auth": "workspace:*",
     "@goalpilot/contracts": "workspace:*",
@@ -55,20 +55,20 @@
     "@goalpilot/provider-simulators": "workspace:*",
     "@playwright/test": "1.62.1",
     "@testing-library/jest-dom": "6.9.1",
-    "@testing-library/react": "16.3.0",
+    "@testing-library/react": "16.3.2",
     "@types/node": "24.10.1",
-    "@vitest/coverage-v8": "4.1.10",
+    "@vitest/coverage-v8": "4.1.11",
     "concurrently": "10.0.5",
     "cross-env": "10.1.0",
     "eslint": "10.8.1",
     "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-react-refresh": "0.5.4",
     "jsdom": "27.0.1",
-    "prettier": "3.6.2",
+    "prettier": "3.9.6",
     "tsx": "4.23.12",
     "typescript": "6.0.3",
     "typescript-eslint": "8.67.0",
-    "vitest": "4.1.10",
+    "vitest": "4.1.11",
     "zod": "4.4.3"
   }
 }
