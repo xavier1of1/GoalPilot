@@ -1,8 +1,8 @@
 import { createDatabaseClient, GoalPilotRepository } from '@goalpilot/data-access';
 import { calendarDateSchema } from '@goalpilot/contracts';
 import { addCalendarDays, daysBetween } from '@goalpilot/domain';
+import { processDemoAutopilot } from '@goalpilot/api/demo-autopilot';
 
-import { processDemoAutopilot } from '../apps/api/src/demo-autopilot.js';
 import { getDatabaseUrl, loadLocalEnvironment } from './runtime-config.js';
 
 loadLocalEnvironment();

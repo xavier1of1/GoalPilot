@@ -1,4 +1,4 @@
-FROM node:24.19.0-bookworm
+FROM node:24.19.0-bookworm@sha256:934240a162082fd8b8a2f90cd5114446443f1eba1c5378f6687167ca405e6584
 
 ARG PNPM_VERSION=11.22.0
 RUN corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate

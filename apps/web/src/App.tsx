@@ -55,7 +55,7 @@ export function App(): React.JSX.Element {
         </div>
       )}
       <Routes>
-        <Route path="/" element={<LandingPage />} />
+        <Route path="/" element={<LandingPage user={user} />} />
         <Route path="/plan" element={<BuilderPage user={user} />} />
         <Route
           path="/signin"

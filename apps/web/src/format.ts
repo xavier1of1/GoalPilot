@@ -22,3 +22,14 @@ export function formatDate(value: string | null): string {
     timeZone: 'UTC',
   }).format(new Date(`${value}T00:00:00Z`));
 }
+
+export function formatTimestamp(value: string): string {
+  return `${new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: 'UTC',
+  }).format(new Date(value))} UTC`;
+}

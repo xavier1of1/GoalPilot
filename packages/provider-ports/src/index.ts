@@ -57,9 +57,39 @@ export interface ContributionProvider {
 }
 
 export interface InterestProvider {
-  processDay(processingDate: string): Promise<{
+  processDay(
+    processingDate: string,
+    userId?: string,
+  ): Promise<{
     readonly interestPostings: number;
+    readonly modeledInterestAddedCents: number;
     readonly purchaseReadyTransitions: number;
     readonly failures: readonly { readonly goalId: string; readonly message: string }[];
   }>;
+}
+
+export interface HistoricalPriceObservation {
+  readonly observationKey: string;
+  readonly observedDate: string;
+  readonly priceCents: number;
+  readonly currency: 'USD';
+}
+
+export interface HistoricalPriceDataset {
+  readonly fixtureCode: 'synthetic_oled_65_v1';
+  readonly displayDescriptor: '65-inch OLED television';
+  readonly currency: 'USD';
+  readonly asOfDate: string;
+  readonly sourceVersion: string;
+  readonly sourceChecksum: string;
+  readonly sourceType: 'deterministic_fixture';
+  readonly isDemoData: true;
+  readonly observations: readonly HistoricalPriceObservation[];
+}
+
+export interface HistoricalPriceProvider {
+  getHistory(input: {
+    readonly fixtureCode: string;
+    readonly asOfDate: string;
+  }): Promise<HistoricalPriceDataset>;
 }

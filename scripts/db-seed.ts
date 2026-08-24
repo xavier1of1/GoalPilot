@@ -2,6 +2,7 @@ import { hashPassword } from '@goalpilot/auth';
 import { createDatabaseClient } from '@goalpilot/data-access';
 import { catalogVersion, illustrativeAssumptions } from '@goalpilot/domain';
 
+import { seedJapanTripFixture } from './demo-fixture.js';
 import { getDatabaseUrl, loadLocalEnvironment } from './runtime-config.js';
 
 loadLocalEnvironment();
@@ -24,11 +25,22 @@ try {
   ] as const;
   for (const user of fixtureUsers) {
     const passwordHash = await hashPassword(user.password, Buffer.from(user.id.slice(0, 16)));
-    await database`
+    const restoredUsers = await database<{ readonly id: string }[]>`
       INSERT INTO users (id, email, display_name, password_hash)
       VALUES (${user.id}, ${user.email}, ${user.displayName}, ${passwordHash})
-      ON CONFLICT (email) DO UPDATE SET display_name = EXCLUDED.display_name
+      ON CONFLICT (email) DO UPDATE SET
+        display_name = EXCLUDED.display_name,
+        password_hash = EXCLUDED.password_hash,
+        updated_at = now(),
+        deleted_at = NULL
+      WHERE users.id = EXCLUDED.id
+      RETURNING id
     `;
+    if (restoredUsers[0]?.id !== user.id) {
+      throw new Error(
+        `Refusing to overwrite non-fixture user state for seeded identity ${user.email}.`,
+      );
+    }
   }
   const firstAssumption = illustrativeAssumptions[0];
   if (firstAssumption === undefined) throw new Error('The illustrative catalog cannot be empty.');
@@ -58,9 +70,14 @@ try {
   await database`
     INSERT INTO application_clock (singleton, application_date)
     VALUES (true, ${applicationDate})
-    ON CONFLICT (singleton) DO NOTHING
+    ON CONFLICT (singleton) DO UPDATE SET
+      application_date = EXCLUDED.application_date,
+      updated_at = now()
   `;
-  process.stdout.write('Loaded deterministic local users, assumptions, and application clock.\n');
+  await seedJapanTripFixture(database);
+  process.stdout.write(
+    'Loaded deterministic local users, assumptions, application clock, and Japan-trip fixture.\n',
+  );
 } finally {
   await database.end();
 }

@@ -1,12 +1,19 @@
 import { createDatabaseClient } from '@goalpilot/data-access';
 
-import { assertLocalDatabaseUrl, loadLocalEnvironment, sameDatabase } from './runtime-config.js';
+import {
+  assertLocalDatabaseUrl,
+  loadLocalEnvironment,
+  resolveDatabaseUrlForRuntime,
+  sameDatabase,
+} from './runtime-config.js';
 
 loadLocalEnvironment();
-const developmentUrl = process.env['DATABASE_URL'];
-const testUrl = process.env['TEST_DATABASE_URL'];
-if (developmentUrl === undefined || testUrl === undefined)
+const configuredDevelopmentUrl = process.env['DATABASE_URL'];
+const configuredTestUrl = process.env['TEST_DATABASE_URL'];
+if (configuredDevelopmentUrl === undefined || configuredTestUrl === undefined)
   throw new Error('DATABASE_URL and TEST_DATABASE_URL are required.');
+const developmentUrl = resolveDatabaseUrlForRuntime(configuredDevelopmentUrl);
+const testUrl = resolveDatabaseUrlForRuntime(configuredTestUrl);
 assertLocalDatabaseUrl(developmentUrl, 'goalpilot_local');
 if (sameDatabase(developmentUrl, testUrl))
   throw new Error('The test database must differ from the local database.');

@@ -1,8 +1,10 @@
 import type {
   AccountSummaryDto,
   ActivityDto,
+  GoalArchiveInput,
   GoalDto,
   GoalInput,
+  PlanCalculationContext,
   PreviewOutput,
   UserDto,
   VehicleCode,
@@ -19,6 +21,17 @@ type UserRow = postgres.Row & {
   readonly password_hash: string;
 };
 
+type ExportUserRow = postgres.Row & {
+  readonly id: string;
+  readonly email: string;
+  readonly display_name: string;
+  readonly created_at: Date;
+  readonly updated_at: Date;
+};
+
+type ExportRecord = Readonly<Record<string, unknown>>;
+type ExportRecordRow = postgres.Row & { readonly record: ExportRecord };
+
 type GoalRow = postgres.Row & {
   readonly id: string;
   readonly name: string;
@@ -34,6 +47,8 @@ type GoalRow = postgres.Row & {
   readonly notes: string | null;
   readonly status: GoalDto['status'];
   readonly version: number;
+  readonly archived_at?: Date | null;
+  readonly archive_reason?: GoalDto['archiveReason'];
   readonly created_at: Date;
   readonly updated_at: Date;
 };
@@ -48,6 +63,44 @@ function calendarDate(value: string | Date): string {
 
 function jsonValue(value: unknown): postgres.JSONValue {
   return JSON.parse(JSON.stringify(value)) as postgres.JSONValue;
+}
+
+function addCalendarDaysUtc(date: string, days: number): string {
+  const value = new Date(`${date}T00:00:00.000Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function initialPlanCalculationContext(
+  goal: Pick<GoalDto, 'currentSavedCents' | 'targetDate'>,
+  assumption: PreviewOutput['vehicles'][number]['assumption'],
+  applicationDate: string,
+): PlanCalculationContext {
+  const fixedTerm =
+    assumption.vehicleCode === 'cd_ladder' || assumption.vehicleCode === 'treasury_ladder';
+  const firstMaturityDate = addCalendarDaysUtc(applicationDate, assumption.lockDays);
+  return {
+    contextVersion: 'plan-calculation-context-v1',
+    personalPrincipalCents: goal.currentSavedCents,
+    totalLedgerValueCents: goal.currentSavedCents,
+    currentAvailableFundsCents: fixedTerm ? 0 : goal.currentSavedCents,
+    currentAccruedInterestMicros: 0,
+    applicationDate,
+    scheduleAnchorDate: applicationDate,
+    omittedContributionDates: [],
+    fixedTermLots:
+      fixedTerm && goal.currentSavedCents > 0
+        ? [
+            {
+              personalPrincipalCents: goal.currentSavedCents,
+              currentBalanceCents: goal.currentSavedCents,
+              firstMaturityDate,
+              nextMaturityDate: firstMaturityDate,
+              nextMaturityInterestEligible: firstMaturityDate <= goal.targetDate,
+            },
+          ]
+        : [],
+  };
 }
 
 function mapGoal(row: GoalRow): GoalDto {
@@ -66,9 +119,33 @@ function mapGoal(row: GoalRow): GoalDto {
     ...(row.notes === null ? {} : { notes: row.notes }),
     status: row.status,
     version: row.version,
+    archivedAt:
+      row.status === 'archived' ? (row.archived_at ?? row.updated_at).toISOString() : null,
+    archiveReason: row.status === 'archived' ? (row.archive_reason ?? 'GOAL_COMPLETED') : null,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
+}
+
+export function calculatePrincipalCompositionBasisPoints(
+  personalPrincipalCents: number,
+  modeledInterestCents: number,
+): number {
+  if (!Number.isSafeInteger(personalPrincipalCents) || personalPrincipalCents < 0) {
+    throw new RangeError('Personal principal must be a non-negative safe integer.');
+  }
+  if (!Number.isSafeInteger(modeledInterestCents) || modeledInterestCents < 0) {
+    throw new RangeError('Modeled interest must be a non-negative safe integer.');
+  }
+  const lifetimeFundingCents = personalPrincipalCents + modeledInterestCents;
+  if (!Number.isSafeInteger(lifetimeFundingCents)) {
+    throw new RangeError('Lifetime funding must be a safe integer.');
+  }
+  if (lifetimeFundingCents === 0) return 0;
+  return Math.min(
+    10_000,
+    Math.max(0, Math.round((personalPrincipalCents / lifetimeFundingCents) * 10_000)),
+  );
 }
 
 export interface SessionRecord {
@@ -88,6 +165,8 @@ export interface DueAccount {
   readonly targetAmountCents: number;
   readonly targetDate: string;
   readonly scheduleAnchorDate: string;
+  readonly omittedContributionDates: readonly string[];
+  readonly omitContribution: boolean;
   readonly apyBasisPoints: number;
   readonly vehicleCode: VehicleCode;
   readonly lastProcessedDate: string;
@@ -97,12 +176,15 @@ export interface ActiveAccount {
   readonly accountId: string;
   readonly userId: string;
   readonly goalId: string;
+  readonly goalVersion: number;
+  readonly planVersionId: string;
   readonly apyBasisPoints: number;
   readonly vehicleCode: VehicleCode;
   readonly lockDays: number;
   readonly targetAmountCents: number;
   readonly targetDate: string;
   readonly balanceCents: number;
+  readonly ledgerEntryCount: number;
   readonly accruedInterestMicros: number;
   readonly lastAccrualDate: string;
 }
@@ -110,8 +192,33 @@ export interface ActiveAccount {
 export interface MaturityLot {
   readonly sourceEntryId: string;
   readonly principalCents: number;
+  readonly currentBalanceCents: number;
   readonly cycle: number;
   readonly maturityDate: string;
+}
+
+export const userDataExportSchemaVersion = 'goalpilot-user-data-export-v2' as const;
+
+export interface UserDataExport {
+  readonly schemaVersion: typeof userDataExportSchemaVersion;
+  readonly exportedAt: string;
+  readonly user: UserDto & { readonly createdAt: string; readonly updatedAt: string };
+  readonly goalDrafts: readonly ExportRecord[];
+  readonly userApplicationClock: ExportRecord | null;
+  readonly demoFixtureCapability: ExportRecord | null;
+  readonly goals: readonly GoalDto[];
+  readonly planVersions: readonly ExportRecord[];
+  readonly simulatedAccounts: readonly ExportRecord[];
+  readonly ledgerEntries: readonly ExportRecord[];
+  readonly scheduleOccurrences: readonly ExportRecord[];
+  readonly interestPostingPeriods: readonly ExportRecord[];
+  readonly purchaseTiming: Readonly<{
+    items: readonly ExportRecord[];
+    watchPolicies: readonly ExportRecord[];
+    checkRuns: readonly ExportRecord[];
+    observations: readonly ExportRecord[];
+    assessments: readonly ExportRecord[];
+  }>;
 }
 
 export class IdempotencyConflictError extends Error {
@@ -126,6 +233,35 @@ export class StateConflictError extends Error {
     super(message);
     this.name = 'StateConflictError';
   }
+}
+
+export async function lockOwnerFinancialMutation(
+  transaction: postgres.TransactionSql,
+  userId: string,
+  expectedApplicationDate?: string,
+): Promise<string> {
+  const clocks = await transaction<
+    { readonly application_date: string | Date; readonly financial_run_active: boolean }[]
+  >`
+    SELECT application_date, (
+      financial_run_token IS NOT NULL AND financial_run_expires_at > now()
+    ) AS financial_run_active
+    FROM user_application_clocks
+    WHERE user_id = ${userId}
+    FOR UPDATE
+  `;
+  const clock = clocks[0];
+  if (clock === undefined) {
+    throw new StateConflictError('The controlled application clock is unavailable.');
+  }
+  if (clock.financial_run_active) {
+    throw new StateConflictError('A Story Mode financial run is already in progress.');
+  }
+  const applicationDate = calendarDate(clock.application_date);
+  if (expectedApplicationDate !== undefined && applicationDate !== expectedApplicationDate) {
+    throw new StateConflictError('The application date changed. Refresh and try again.');
+  }
+  return applicationDate;
 }
 
 export class GoalPilotRepository {
@@ -317,6 +453,7 @@ export class GoalPilotRepository {
     expectedVersion: number,
   ): Promise<GoalDto | null> {
     return this.database.begin(async (transaction) => {
+      await lockOwnerFinancialMutation(transaction, userId);
       const rows = await transaction<GoalRow[]>`
         UPDATE goals SET
           name = ${input.name}, category = ${input.category ?? null},
@@ -356,8 +493,10 @@ export class GoalPilotRepository {
 
   public async archiveGoal(userId: string, goalId: string): Promise<boolean> {
     return this.database.begin(async (transaction) => {
+      await lockOwnerFinancialMutation(transaction, userId);
       const rows = await transaction<{ id: string }[]>`
-        UPDATE goals SET status = 'archived', version = version + 1, updated_at = now()
+        UPDATE goals SET status = 'archived', version = version + 1,
+          archived_at = now(), archive_reason = 'GOAL_COMPLETED', updated_at = now()
         WHERE id = ${goalId} AND user_id = ${userId} AND status = 'completed'
         RETURNING id
       `;
@@ -370,6 +509,107 @@ export class GoalPilotRepository {
     });
   }
 
+  public async archiveGoalPlan(input: {
+    readonly userId: string;
+    readonly goalId: string;
+    readonly expectedGoalVersion: number;
+    readonly reasonCode: GoalArchiveInput['reasonCode'];
+    readonly idempotencyKey: string;
+    readonly requestHash: string;
+    readonly requestId?: string;
+  }): Promise<
+    | { readonly result: 'archived'; readonly goal: GoalDto; readonly replayed: boolean }
+    | {
+        readonly result: 'not_found' | 'version_conflict' | 'invalid_state';
+        readonly replayed: false;
+      }
+  > {
+    return this.database.begin(async (transaction) => {
+      const operation = 'goal-plan.archive';
+      await transaction`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.userId}:${operation}:${input.idempotencyKey}`}, 0))`;
+      const prior = await transaction<
+        { readonly request_hash: string; readonly response_body: GoalDto }[]
+      >`
+        SELECT request_hash, response_body
+        FROM idempotency_records
+        WHERE user_id = ${input.userId} AND operation = ${operation}
+          AND key = ${input.idempotencyKey}
+      `;
+      const previous = prior[0];
+      if (previous !== undefined) {
+        if (previous.request_hash !== input.requestHash) throw new IdempotencyConflictError();
+        return {
+          result: 'archived',
+          goal: {
+            ...previous.response_body,
+            archivedAt: previous.response_body.archivedAt ?? previous.response_body.updatedAt,
+            archiveReason: previous.response_body.archiveReason ?? input.reasonCode,
+          },
+          replayed: true,
+        };
+      }
+
+      await lockOwnerFinancialMutation(transaction, input.userId);
+
+      const currentRows = await transaction<
+        { readonly version: number; readonly status: string }[]
+      >`
+        SELECT version, status FROM goals
+        WHERE id = ${input.goalId} AND user_id = ${input.userId}
+        FOR UPDATE
+      `;
+      const current = currentRows[0];
+      if (current === undefined) return { result: 'not_found', replayed: false };
+      if (current.version !== input.expectedGoalVersion) {
+        return { result: 'version_conflict', replayed: false };
+      }
+      const allowedStates = ['active', 'paused', 'purchase_ready', 'completed'];
+      if (
+        !allowedStates.includes(current.status) ||
+        (input.reasonCode === 'GOAL_COMPLETED' && current.status !== 'completed')
+      ) {
+        return { result: 'invalid_state', replayed: false };
+      }
+
+      const archivedRows = await transaction<GoalRow[]>`
+        UPDATE goals SET status = 'archived', version = version + 1,
+          archived_at = now(), archive_reason = ${input.reasonCode}, updated_at = now()
+        WHERE id = ${input.goalId} AND user_id = ${input.userId}
+          AND version = ${input.expectedGoalVersion}
+        RETURNING id, name, category, target_amount_cents, current_saved_cents,
+          target_date, recurring_contribution_cents, contribution_cadence,
+          liquidity_need, preservation_preference, confidence, notes, status,
+          version, archived_at, archive_reason, created_at, updated_at
+      `;
+      const archivedRow = archivedRows[0];
+      if (archivedRow === undefined) return { result: 'version_conflict', replayed: false };
+      await transaction`
+        UPDATE simulated_accounts SET
+          status = 'completed', next_contribution_date = NULL, updated_at = now()
+        WHERE goal_id = ${input.goalId} AND user_id = ${input.userId}
+      `;
+      const goal = mapGoal(archivedRow);
+      await transaction`
+        INSERT INTO idempotency_records (
+          user_id, operation, key, request_hash, response_status, response_body
+        ) VALUES (
+          ${input.userId}, ${operation}, ${input.idempotencyKey}, ${input.requestHash}, 200,
+          ${transaction.json(jsonValue(goal))}
+        )
+      `;
+      await transaction`
+        INSERT INTO audit_events (
+          id, user_id, event_name, resource_id, request_id, metadata
+        ) VALUES (
+          ${ulid()}, ${input.userId}, 'goal.archived', ${input.goalId},
+          ${input.requestId ?? null},
+          ${transaction.json({ reasonCode: input.reasonCode })}
+        )
+      `;
+      return { result: 'archived', goal, replayed: false };
+    });
+  }
+
   public async setGoalState(
     userId: string,
     goalId: string,
@@ -379,6 +619,7 @@ export class GoalPilotRepository {
     effectiveDate: string,
   ): Promise<boolean> {
     return this.database.begin(async (transaction) => {
+      await lockOwnerFinancialMutation(transaction, userId);
       const rows = await transaction<{ id: string }[]>`
         UPDATE goals SET status = ${toState}, version = version + 1, updated_at = now()
         WHERE id = ${goalId} AND user_id = ${userId} AND status IN ${transaction(fromStates)}
@@ -437,6 +678,145 @@ export class GoalPilotRepository {
     });
   }
 
+  public async transitionGoalStateIdempotent(input: {
+    readonly userId: string;
+    readonly goalId: string;
+    readonly expectedGoalVersion: number;
+    readonly fromStates: readonly GoalDto['status'][];
+    readonly toState: GoalDto['status'];
+    readonly eventType: ActivityDto['type'];
+    readonly effectiveDate: string;
+    readonly idempotencyKey: string;
+    readonly requestHash: string;
+    readonly requestId?: string;
+  }): Promise<
+    | { readonly result: 'transitioned'; readonly goal: GoalDto; readonly replayed: boolean }
+    | {
+        readonly result: 'not_found' | 'version_conflict' | 'invalid_state';
+        readonly replayed: false;
+      }
+  > {
+    return this.database.begin(async (transaction) => {
+      const operation = `goal.${input.toState}`;
+      await transaction`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.userId}:${operation}:${input.idempotencyKey}`}, 0))`;
+      const prior = await transaction<
+        { readonly request_hash: string; readonly response_body: GoalDto }[]
+      >`
+        SELECT request_hash, response_body FROM idempotency_records
+        WHERE user_id = ${input.userId} AND operation = ${operation}
+          AND key = ${input.idempotencyKey}
+      `;
+      const previous = prior[0];
+      if (previous !== undefined) {
+        if (previous.request_hash !== input.requestHash) throw new IdempotencyConflictError();
+        return { result: 'transitioned', goal: previous.response_body, replayed: true };
+      }
+
+      await lockOwnerFinancialMutation(transaction, input.userId, input.effectiveDate);
+
+      const currentRows = await transaction<
+        {
+          readonly version: number;
+          readonly status: GoalDto['status'];
+          readonly target_amount_cents: string;
+        }[]
+      >`
+        SELECT version, status, target_amount_cents FROM goals
+        WHERE id = ${input.goalId} AND user_id = ${input.userId}
+        FOR UPDATE
+      `;
+      const current = currentRows[0];
+      if (current === undefined) return { result: 'not_found', replayed: false };
+      if (current.version !== input.expectedGoalVersion)
+        return { result: 'version_conflict', replayed: false };
+      if (!input.fromStates.includes(current.status))
+        return { result: 'invalid_state', replayed: false };
+      const accounts = await transaction<{ readonly id: string }[]>`
+        SELECT id FROM simulated_accounts
+        WHERE goal_id = ${input.goalId} AND user_id = ${input.userId}
+        FOR UPDATE
+      `;
+      const account = accounts[0];
+      if (account === undefined) return { result: 'invalid_state', replayed: false };
+      let resolvedToState = input.toState;
+      if (input.eventType === 'goal_completed' || input.eventType === 'resumed') {
+        const available = await transaction<{ readonly available_balance_cents: string }[]>`
+          SELECT simulated_account_available_balance(
+            ${account.id}, ${input.userId}, ${input.effectiveDate}::date
+          ) AS available_balance_cents
+        `;
+        const purchaseReady =
+          Number(available[0]?.available_balance_cents ?? 0) >= Number(current.target_amount_cents);
+        if (input.eventType === 'goal_completed' && !purchaseReady) {
+          return { result: 'invalid_state', replayed: false };
+        }
+        if (input.eventType === 'resumed' && purchaseReady) resolvedToState = 'purchase_ready';
+      }
+
+      const rows = await transaction<GoalRow[]>`
+        UPDATE goals SET status = ${resolvedToState}, version = version + 1, updated_at = now()
+        WHERE id = ${input.goalId} AND user_id = ${input.userId}
+          AND version = ${input.expectedGoalVersion} AND status IN ${transaction(input.fromStates)}
+        RETURNING *
+      `;
+      const row = rows[0];
+      if (row === undefined) return { result: 'version_conflict', replayed: false };
+      await transaction`
+        UPDATE simulated_accounts SET status = ${resolvedToState}, updated_at = now()
+        WHERE goal_id = ${input.goalId} AND user_id = ${input.userId}
+      `;
+      await transaction`
+        INSERT INTO ledger_entries
+          (id, account_id, user_id, entry_type, effective_date, description)
+        VALUES (
+          ${ulid()}, ${account.id}, ${input.userId}, ${input.eventType},
+          ${input.effectiveDate}, ${input.eventType.replaceAll('_', ' ')}
+        )
+      `;
+      if (input.eventType === 'goal_completed') {
+        const balances = await transaction<
+          { readonly principal_cents: string; readonly interest_cents: string }[]
+        >`
+            SELECT COALESCE(SUM(principal_cents), 0) AS principal_cents,
+                   COALESCE(SUM(interest_cents), 0) AS interest_cents
+            FROM ledger_entries
+            WHERE account_id = ${account.id} AND user_id = ${input.userId}
+          `;
+        const principalCents = Number(balances[0]?.principal_cents ?? 0);
+        const interestCents = Number(balances[0]?.interest_cents ?? 0);
+        if (principalCents + interestCents > 0) {
+          await transaction`
+              INSERT INTO ledger_entries (
+                id, account_id, user_id, entry_type, principal_cents, interest_cents,
+                effective_date, description
+              ) VALUES (
+                ${ulid()}, ${account.id}, ${input.userId}, 'simulated_withdrawal',
+                ${-principalCents}, ${-interestCents}, ${input.effectiveDate},
+                'Simulated purchase withdrawal'
+              )
+            `;
+        }
+      }
+      const goal = mapGoal(row);
+      await transaction`
+        INSERT INTO idempotency_records (
+          user_id, operation, key, request_hash, response_status, response_body
+        ) VALUES (
+          ${input.userId}, ${operation}, ${input.idempotencyKey}, ${input.requestHash}, 200,
+          ${transaction.json(jsonValue(goal))}
+        )
+      `;
+      await transaction`
+        INSERT INTO audit_events (id, user_id, event_name, resource_id, request_id)
+        VALUES (
+          ${ulid()}, ${input.userId}, ${`goal.${input.toState}`}, ${input.goalId},
+          ${input.requestId ?? null}
+        )
+      `;
+      return { result: 'transitioned', goal, replayed: false };
+    });
+  }
+
   public async activateGoal(input: {
     readonly userId: string;
     readonly goal: GoalDto;
@@ -446,6 +826,7 @@ export class GoalPilotRepository {
     readonly nextContributionDate: string | null;
   }): Promise<string> {
     return this.database.begin(async (transaction) => {
+      await lockOwnerFinancialMutation(transaction, input.userId, input.asOfDate);
       const selected = input.projection.vehicles.find(
         (vehicle) => vehicle.vehicleCode === input.vehicleCode,
       );
@@ -463,14 +844,20 @@ export class GoalPilotRepository {
       if (updated[0] === undefined)
         throw new StateConflictError('This goal cannot be activated from its current state.');
       const planId = ulid();
+      const calculationContext = initialPlanCalculationContext(
+        input.goal,
+        selected.assumption,
+        input.asOfDate,
+      );
       await transaction`
         INSERT INTO plan_versions (
           id, goal_id, user_id, version, vehicle_code, assumption_version,
-          normalized_input, calculation_output
+          normalized_input, calculation_output, calculation_context
         ) VALUES (
           ${planId}, ${input.goal.id}, ${input.userId}, 1, ${input.vehicleCode},
           ${selected.assumption.assumptionVersion}, ${transaction.json(jsonValue(input.goal))},
-          ${transaction.json(jsonValue(input.projection))}
+          ${transaction.json(jsonValue(input.projection))},
+          ${transaction.json(jsonValue(calculationContext))}
         )
       `;
       const accountId = ulid();
@@ -500,16 +887,157 @@ export class GoalPilotRepository {
     });
   }
 
+  public async activateGoalIdempotent(input: {
+    readonly userId: string;
+    readonly goal: GoalDto;
+    readonly expectedGoalVersion: number;
+    readonly vehicleCode: VehicleCode;
+    readonly projection: PreviewOutput;
+    readonly asOfDate: string;
+    readonly nextContributionDate: string | null;
+    readonly idempotencyKey: string;
+    readonly requestHash: string;
+    readonly requestId?: string;
+  }): Promise<{ readonly account: AccountSummaryDto; readonly replayed: boolean }> {
+    return this.database.begin(async (transaction) => {
+      const operation = 'goal.activate';
+      await transaction`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.userId}:${operation}:${input.idempotencyKey}`}, 0))`;
+      const prior = await transaction<
+        { readonly request_hash: string; readonly response_body: AccountSummaryDto }[]
+      >`
+        SELECT request_hash, response_body FROM idempotency_records
+        WHERE user_id = ${input.userId} AND operation = ${operation}
+          AND key = ${input.idempotencyKey}
+      `;
+      const previous = prior[0];
+      if (previous !== undefined) {
+        if (previous.request_hash !== input.requestHash) throw new IdempotencyConflictError();
+        return { account: previous.response_body, replayed: true };
+      }
+
+      await lockOwnerFinancialMutation(transaction, input.userId, input.asOfDate);
+
+      const selected = input.projection.vehicles.find(
+        (vehicle) => vehicle.vehicleCode === input.vehicleCode,
+      );
+      if (!selected?.eligible) throw new Error('Selected vehicle is ineligible.');
+      const funded = input.goal.currentSavedCents >= input.goal.targetAmountCents;
+      const fixedTerm =
+        input.vehicleCode === 'cd_ladder' || input.vehicleCode === 'treasury_ladder';
+      const purchaseReady = funded && !fixedTerm;
+      const updated = await transaction<{ readonly id: string }[]>`
+        UPDATE goals SET status = ${purchaseReady ? 'purchase_ready' : 'active'},
+          version = version + 1, updated_at = now()
+        WHERE id = ${input.goal.id} AND user_id = ${input.userId} AND status = 'draft'
+          AND version = ${input.expectedGoalVersion}
+        RETURNING id
+      `;
+      if (updated[0] === undefined)
+        throw new StateConflictError('The goal changed or cannot be activated.');
+      const planId = ulid();
+      const calculationContext = initialPlanCalculationContext(
+        input.goal,
+        selected.assumption,
+        input.asOfDate,
+      );
+      await transaction`
+        INSERT INTO plan_versions (
+          id, goal_id, user_id, version, vehicle_code, assumption_version,
+          normalized_input, calculation_output, calculation_context
+        ) VALUES (
+          ${planId}, ${input.goal.id}, ${input.userId}, 1, ${input.vehicleCode},
+          ${selected.assumption.assumptionVersion}, ${transaction.json(jsonValue(input.goal))},
+          ${transaction.json(jsonValue(input.projection))},
+          ${transaction.json(jsonValue(calculationContext))}
+        )
+      `;
+      const accountId = ulid();
+      await transaction`
+        INSERT INTO simulated_accounts (
+          id, goal_id, user_id, plan_version_id, status, next_contribution_date,
+          last_processed_date, last_accrual_date
+        ) VALUES (
+          ${accountId}, ${input.goal.id}, ${input.userId}, ${planId},
+          ${purchaseReady ? 'purchase_ready' : 'active'},
+          ${funded ? null : input.nextContributionDate}, ${input.asOfDate}, ${input.asOfDate}
+        )
+      `;
+      await transaction`
+        INSERT INTO ledger_entries (
+          id, account_id, user_id, entry_type, principal_cents, effective_date, description
+        ) VALUES (
+          ${ulid()}, ${accountId}, ${input.userId}, 'account_opened',
+          ${input.goal.currentSavedCents}, ${input.asOfDate}, 'Opening simulated savings'
+        )
+      `;
+      const account: AccountSummaryDto = {
+        id: accountId,
+        goalId: input.goal.id,
+        status: purchaseReady ? 'purchase_ready' : 'active',
+        vehicleCode: input.vehicleCode,
+        principalContributedCents: input.goal.currentSavedCents,
+        interestEarnedCents: 0,
+        currentLedgerBalanceCents: input.goal.currentSavedCents,
+        principalCompositionBasisPoints: input.goal.currentSavedCents === 0 ? 0 : 10_000,
+        availableBalanceCents:
+          fixedTerm && input.asOfDate < input.goal.targetDate ? 0 : input.goal.currentSavedCents,
+        pendingContributionCents: 0,
+        nextContributionDate: funded ? null : input.nextContributionDate,
+        currentIllustrativeApyBasisPoints: selected.assumption.apyBasisPoints,
+        progressPercent: Math.min(
+          100,
+          Math.round((input.goal.currentSavedCents / input.goal.targetAmountCents) * 10_000) / 100,
+        ),
+        projectedCompletionDate: selected.projectedCompletionDate,
+        assumptionVersion: selected.assumption.assumptionVersion,
+        assumptionReviewedDate: selected.assumption.reviewedDate,
+        assumptionIsStale: false,
+      };
+      await transaction`
+        INSERT INTO idempotency_records (
+          user_id, operation, key, request_hash, response_status, response_body
+        ) VALUES (
+          ${input.userId}, ${operation}, ${input.idempotencyKey}, ${input.requestHash}, 201,
+          ${transaction.json(jsonValue(account))}
+        )
+      `;
+      await transaction`
+        INSERT INTO audit_events (id, user_id, event_name, resource_id, request_id)
+        VALUES (
+          ${ulid()}, ${input.userId}, 'goal.plan_activated', ${input.goal.id},
+          ${input.requestId ?? null}
+        )
+      `;
+      return { account, replayed: false };
+    });
+  }
+
   public async getAccountSummary(
     userId: string,
     goalId: string,
     asOfDate?: string,
   ): Promise<AccountSummaryDto | null> {
-    const applicationDate = asOfDate ?? (await this.getApplicationDate());
+    const ownerClock =
+      asOfDate === undefined
+        ? await this.database<{ readonly application_date: string | Date }[]>`
+            SELECT application_date FROM user_application_clocks WHERE user_id = ${userId}
+          `
+        : [];
+    const applicationDate =
+      asOfDate ??
+      (ownerClock[0] === undefined
+        ? (() => {
+            throw new Error('The user application clock is unavailable.');
+          })()
+        : calendarDate(ownerClock[0].application_date));
     const rows = await this.database<
       (postgres.Row & {
         readonly id: string;
         readonly goal_id: string;
+        readonly goal_version: number;
+        readonly goal_status: GoalDto['status'];
+        readonly archive_reason: GoalDto['archiveReason'];
+        readonly plan_version_id: string;
         readonly status: AccountSummaryDto['status'];
         readonly vehicle_code: VehicleCode;
         readonly assumption_version: string;
@@ -520,23 +1048,35 @@ export class GoalPilotRepository {
         readonly principal_cents: string;
         readonly interest_cents: string;
         readonly balance_cents: string;
+        readonly ledger_entry_count: string;
+        readonly available_balance_cents: string;
         readonly projected_completion_date: string | null;
         readonly reviewed_date: string | Date;
         readonly assumption_is_stale: boolean;
       })[]
     >`
-      SELECT a.id, a.goal_id, a.status, p.vehicle_code, p.assumption_version,
+      SELECT a.id, a.goal_id, a.status, g.status AS goal_status, g.archive_reason,
+             p.vehicle_code, p.assumption_version,
              va.apy_basis_points, vav.reviewed_date,
              (p.vehicle_code <> 'cash' AND ${applicationDate}::date >
                vav.reviewed_date + 365) AS assumption_is_stale,
              a.next_contribution_date, g.target_amount_cents, g.target_date,
              COALESCE(SUM(l.principal_cents) FILTER (
                WHERE l.entry_type IN ('account_opened', 'contribution_posted')
+                  OR (l.entry_type = 'reversal'
+                      AND reversed_source.entry_type IN (
+                        'account_opened', 'contribution_posted'
+                      ))
              ), 0) AS principal_cents,
              COALESCE(SUM(l.interest_cents) FILTER (
                WHERE l.entry_type = 'interest_posted'
+                  OR (l.entry_type = 'reversal'
+                      AND reversed_source.entry_type = 'interest_posted')
              ), 0) AS interest_cents,
              COALESCE(SUM(l.principal_cents + l.interest_cents), 0) AS balance_cents,
+             simulated_account_available_balance(
+               a.id, ${userId}, ${applicationDate}::date
+             ) AS available_balance_cents,
              p.calculation_output #>> ARRAY['vehicles',
                (SELECT (ordinality - 1)::text FROM jsonb_array_elements(p.calculation_output->'vehicles')
                 WITH ORDINALITY AS vehicle(value, ordinality)
@@ -548,9 +1088,15 @@ export class GoalPilotRepository {
       JOIN vehicle_assumptions va ON va.version = p.assumption_version AND va.vehicle_code = p.vehicle_code
       JOIN vehicle_assumption_versions vav ON vav.version = p.assumption_version
       LEFT JOIN ledger_entries l ON l.account_id = a.id AND l.user_id = ${userId}
+        AND l.effective_date <= ${applicationDate}::date
+      LEFT JOIN ledger_entries reversed_source
+        ON reversed_source.id = l.reverses_entry_id
+        AND reversed_source.account_id = l.account_id
+        AND reversed_source.user_id = l.user_id
       WHERE a.goal_id = ${goalId} AND a.user_id = ${userId}
       GROUP BY a.id, p.vehicle_code, p.assumption_version, va.apy_basis_points,
-               vav.reviewed_date, g.target_amount_cents, g.target_date, p.calculation_output
+               vav.reviewed_date, g.target_amount_cents, g.target_date, g.status,
+               g.archive_reason, p.calculation_output
     `;
     const row = rows[0];
     if (row === undefined) return null;
@@ -558,25 +1104,32 @@ export class GoalPilotRepository {
     const interest = Number(row.interest_cents);
     const balance = Number(row.balance_cents);
     const target = Number(row.target_amount_cents);
-    const fixedTerm = row.vehicle_code === 'cd_ladder' || row.vehicle_code === 'treasury_ladder';
     return {
       id: row.id,
       goalId: row.goal_id,
-      status: row.status,
+      status:
+        row.goal_status === 'archived' && row.archive_reason !== 'GOAL_COMPLETED'
+          ? 'archived'
+          : row.status,
       vehicleCode: row.vehicle_code,
       principalContributedCents: principal,
       interestEarnedCents: interest,
       currentLedgerBalanceCents: balance,
-      availableBalanceCents:
-        fixedTerm && applicationDate < calendarDate(row.target_date) ? 0 : balance,
+      principalCompositionBasisPoints: calculatePrincipalCompositionBasisPoints(
+        principal,
+        interest,
+      ),
+      availableBalanceCents: Number(row.available_balance_cents),
       pendingContributionCents: 0,
       nextContributionDate:
         row.next_contribution_date === null ? null : calendarDate(row.next_contribution_date),
       currentIllustrativeApyBasisPoints: row.apy_basis_points,
       progressPercent:
-        row.status === 'completed' || target === 0
+        row.goal_status === 'completed' ||
+        (row.goal_status === 'archived' && row.archive_reason === 'GOAL_COMPLETED') ||
+        target === 0
           ? 100
-          : Math.min(100, Math.round((balance / target) * 10_000) / 100),
+          : Math.min(100, Math.max(0, Math.round((balance / target) * 10_000) / 100)),
       projectedCompletionDate: row.projected_completion_date,
       assumptionVersion: row.assumption_version,
       assumptionReviewedDate: calendarDate(row.reviewed_date),
@@ -600,7 +1153,9 @@ export class GoalPilotRepository {
              l.description, l.created_at
       FROM ledger_entries l
       JOIN simulated_accounts a ON a.id = l.account_id
+      JOIN user_application_clocks clock ON clock.user_id = l.user_id
       WHERE a.goal_id = ${goalId} AND l.user_id = ${userId} AND a.user_id = ${userId}
+        AND l.effective_date <= clock.application_date
       ORDER BY l.effective_date DESC, l.created_at DESC
     `;
     return rows.map((row) => ({
@@ -650,6 +1205,36 @@ export class GoalPilotRepository {
       if (storedRecord !== undefined) {
         if (storedRecord.request_hash !== input.requestHash) throw new IdempotencyConflictError();
         return { ...storedRecord.response_body, duplicate: true };
+      }
+      const clocks = await transaction<
+        {
+          readonly application_date: string | Date;
+          readonly financial_run_token: string | null;
+          readonly financial_run_expires_at: Date | null;
+          readonly financial_run_active: boolean;
+        }[]
+      >`
+        SELECT application_date, financial_run_token, financial_run_expires_at,
+               (
+                 financial_run_token IS NOT NULL AND financial_run_expires_at > now()
+               ) AS financial_run_active
+        FROM user_application_clocks
+        WHERE user_id = ${input.userId}
+        FOR UPDATE
+      `;
+      const ownerClock = clocks[0];
+      if (
+        ownerClock === undefined ||
+        calendarDate(ownerClock.application_date) !== input.effectiveDate
+      ) {
+        throw new StateConflictError(
+          'The application date changed. Refresh before posting this contribution.',
+        );
+      }
+      if (ownerClock.financial_run_active) {
+        throw new StateConflictError(
+          'A Story Mode financial run is in progress. Retry after it finishes.',
+        );
       }
       const accountRows = await transaction<
         {
@@ -705,16 +1290,19 @@ export class GoalPilotRepository {
         )
       `;
       if (!input.simulateFailure) {
-        const balances = await transaction<{ balance_cents: string }[]>`
-          SELECT COALESCE(SUM(principal_cents + interest_cents), 0) AS balance_cents
+        const balances = await transaction<
+          { readonly balance_cents: string; readonly available_balance_cents: string }[]
+        >`
+          SELECT COALESCE(SUM(principal_cents + interest_cents), 0) AS balance_cents,
+                 simulated_account_available_balance(
+                   ${account.id}, ${input.userId}, ${input.effectiveDate}::date
+                 ) AS available_balance_cents
           FROM ledger_entries WHERE account_id = ${account.id}
         `;
         const funded =
           Number(balances[0]?.balance_cents ?? 0) >= Number(account.target_amount_cents);
-        const fixedTerm =
-          account.vehicle_code === 'cd_ladder' || account.vehicle_code === 'treasury_ladder';
         const purchaseReady =
-          funded && (!fixedTerm || input.effectiveDate >= calendarDate(account.target_date));
+          Number(balances[0]?.available_balance_cents ?? 0) >= Number(account.target_amount_cents);
         if (funded) {
           await transaction`
             UPDATE simulated_accounts SET status = ${purchaseReady ? 'purchase_ready' : 'active'},
@@ -743,7 +1331,10 @@ export class GoalPilotRepository {
     });
   }
 
-  public async listDueAccounts(processingDate: string): Promise<readonly DueAccount[]> {
+  public async listDueAccounts(
+    processingDate: string,
+    userId?: string,
+  ): Promise<readonly DueAccount[]> {
     const rows = await this.database<
       (postgres.Row & {
         readonly account_id: string;
@@ -754,7 +1345,9 @@ export class GoalPilotRepository {
         readonly contribution_cadence: GoalInput['contributionCadence'];
         readonly target_amount_cents: string;
         readonly target_date: string | Date;
-        readonly schedule_anchor_date: string;
+        readonly schedule_anchor_date: string | Date;
+        readonly omitted_contribution_dates: readonly (string | Date)[];
+        readonly omit_contribution: boolean;
         readonly apy_basis_points: number;
         readonly vehicle_code: VehicleCode;
         readonly last_processed_date: string | Date;
@@ -762,7 +1355,9 @@ export class GoalPilotRepository {
     >`
       SELECT a.id AS account_id, a.user_id, a.goal_id, a.next_contribution_date,
              g.recurring_contribution_cents, g.contribution_cadence, g.target_amount_cents,
-             g.target_date, p.calculation_output->>'asOfDate' AS schedule_anchor_date,
+             g.target_date, p.schedule_anchor_date AS schedule_anchor_date,
+             p.omitted_contribution_dates,
+             a.next_contribution_date = ANY(p.omitted_contribution_dates) AS omit_contribution,
              va.apy_basis_points, p.vehicle_code, a.last_processed_date
       FROM simulated_accounts a
       JOIN goals g ON g.id = a.goal_id AND g.user_id = a.user_id
@@ -770,6 +1365,7 @@ export class GoalPilotRepository {
       JOIN vehicle_assumptions va ON va.version = p.assumption_version AND va.vehicle_code = p.vehicle_code
       WHERE a.status = 'active' AND a.next_contribution_date <= ${processingDate}
         AND a.next_contribution_date <= g.target_date
+        AND (${userId ?? null}::text IS NULL OR a.user_id = ${userId ?? null})
       ORDER BY a.next_contribution_date, a.id
       LIMIT 500
     `;
@@ -782,7 +1378,9 @@ export class GoalPilotRepository {
       cadence: row.contribution_cadence,
       targetAmountCents: Number(row.target_amount_cents),
       targetDate: calendarDate(row.target_date),
-      scheduleAnchorDate: row.schedule_anchor_date,
+      scheduleAnchorDate: calendarDate(row.schedule_anchor_date),
+      omittedContributionDates: row.omitted_contribution_dates.map(calendarDate),
+      omitContribution: row.omit_contribution,
       apyBasisPoints: row.apy_basis_points,
       vehicleCode: row.vehicle_code,
       lastProcessedDate: calendarDate(row.last_processed_date),
@@ -816,7 +1414,7 @@ export class GoalPilotRepository {
         VALUES (
           ${occurrenceId}, ${input.account.accountId}, ${input.account.userId},
           ${input.account.nextContributionDate},
-          ${input.account.recurringContributionCents > 0 ? 'posted' : 'skipped'}
+          ${input.account.recurringContributionCents > 0 && !input.account.omitContribution ? 'posted' : 'skipped'}
         ) ON CONFLICT (account_id, due_date) DO NOTHING RETURNING id
       `;
       if (occurrences[0] === undefined) return { posted: false, purchaseReady: false };
@@ -830,7 +1428,7 @@ export class GoalPilotRepository {
           'Scheduled simulated contribution due'
         )
       `;
-      if (input.account.recurringContributionCents === 0) {
+      if (input.account.recurringContributionCents === 0 || input.account.omitContribution) {
         await transaction`
           UPDATE simulated_accounts SET next_contribution_date = ${input.nextContributionDate},
             last_processed_date = ${input.account.nextContributionDate}, updated_at = now()
@@ -848,16 +1446,19 @@ export class GoalPilotRepository {
           ${occurrenceId}, 'Scheduled simulated contribution posted'
         )
       `;
-      const balances = await transaction<{ balance_cents: string }[]>`
-        SELECT COALESCE(SUM(principal_cents + interest_cents), 0) AS balance_cents
+      const balances = await transaction<
+        { readonly balance_cents: string; readonly available_balance_cents: string }[]
+      >`
+        SELECT COALESCE(SUM(principal_cents + interest_cents), 0) AS balance_cents,
+               simulated_account_available_balance(
+                 ${input.account.accountId}, ${input.account.userId},
+                 ${input.processingDate}::date
+               ) AS available_balance_cents
         FROM ledger_entries WHERE account_id = ${input.account.accountId}
       `;
       const funded = Number(balances[0]?.balance_cents ?? 0) >= input.account.targetAmountCents;
-      const fixedTerm =
-        input.account.vehicleCode === 'cd_ladder' ||
-        input.account.vehicleCode === 'treasury_ladder';
       const purchaseReady =
-        funded && (!fixedTerm || input.processingDate >= input.account.targetDate);
+        Number(balances[0]?.available_balance_cents ?? 0) >= input.account.targetAmountCents;
       await transaction`
         UPDATE simulated_accounts SET
           status = ${purchaseReady ? 'purchase_ready' : 'active'},
@@ -876,45 +1477,58 @@ export class GoalPilotRepository {
     });
   }
 
-  public async listActiveAccounts(): Promise<readonly ActiveAccount[]> {
+  public async listActiveAccounts(
+    userId?: string,
+    processingDate?: string,
+  ): Promise<readonly ActiveAccount[]> {
     const rows = await this.database<
       (postgres.Row & {
         readonly account_id: string;
         readonly user_id: string;
         readonly goal_id: string;
+        readonly goal_version: number;
+        readonly plan_version_id: string;
         readonly apy_basis_points: number;
         readonly vehicle_code: VehicleCode;
         readonly lock_days: number;
         readonly target_amount_cents: string;
         readonly target_date: string | Date;
         readonly balance_cents: string;
+        readonly ledger_entry_count: string;
         readonly accrued_interest_micros: string;
         readonly last_accrual_date: string | Date;
       })[]
     >`
-      SELECT a.id AS account_id, a.user_id, a.goal_id, va.apy_basis_points,
+      SELECT a.id AS account_id, a.user_id, a.goal_id, g.version AS goal_version,
+             p.id AS plan_version_id, va.apy_basis_points,
              p.vehicle_code, va.lock_days, g.target_amount_cents, g.target_date,
              a.accrued_interest_micros, a.last_accrual_date,
-             COALESCE(SUM(l.principal_cents + l.interest_cents), 0) AS balance_cents
+             COALESCE(SUM(l.principal_cents + l.interest_cents), 0) AS balance_cents,
+             COUNT(l.id) AS ledger_entry_count
       FROM simulated_accounts a
       JOIN goals g ON g.id = a.goal_id AND g.user_id = a.user_id
       JOIN plan_versions p ON p.id = a.plan_version_id AND p.user_id = a.user_id
       JOIN vehicle_assumptions va ON va.version = p.assumption_version AND va.vehicle_code = p.vehicle_code
       LEFT JOIN ledger_entries l ON l.account_id = a.id AND l.user_id = a.user_id
+        AND (${processingDate ?? null}::date IS NULL OR l.effective_date <= ${processingDate ?? null}::date)
       WHERE a.status IN ('active', 'paused', 'purchase_ready')
+        AND (${userId ?? null}::text IS NULL OR a.user_id = ${userId ?? null})
       GROUP BY a.id, va.apy_basis_points, p.vehicle_code, va.lock_days,
-               g.target_amount_cents, g.target_date
+               g.id, p.id, g.target_amount_cents, g.target_date
     `;
     return rows.map((row) => ({
       accountId: row.account_id,
       userId: row.user_id,
       goalId: row.goal_id,
+      goalVersion: row.goal_version,
+      planVersionId: row.plan_version_id,
       apyBasisPoints: row.apy_basis_points,
       vehicleCode: row.vehicle_code,
       lockDays: row.lock_days,
       targetAmountCents: Number(row.target_amount_cents),
       targetDate: calendarDate(row.target_date),
       balanceCents: Number(row.balance_cents),
+      ledgerEntryCount: Number(row.ledger_entry_count),
       accruedInterestMicros: Number(row.accrued_interest_micros),
       lastAccrualDate: calendarDate(row.last_accrual_date),
     }));
@@ -929,11 +1543,34 @@ export class GoalPilotRepository {
       (postgres.Row & {
         readonly source_entry_id: string;
         readonly principal_cents: string;
+        readonly current_balance_cents: string;
         readonly cycle: number;
         readonly maturity_date: string | Date;
       })[]
     >`
-      SELECT l.id AS source_entry_id, l.principal_cents, cycles.cycle,
+      SELECT l.id AS source_entry_id, l.principal_cents,
+             l.principal_cents + COALESCE((
+               SELECT SUM(lot_entry.interest_cents)
+               FROM ledger_entries lot_entry
+               LEFT JOIN ledger_entries reversed_interest
+                 ON reversed_interest.id = lot_entry.reverses_entry_id
+                AND reversed_interest.account_id = lot_entry.account_id
+                AND reversed_interest.user_id = lot_entry.user_id
+               WHERE lot_entry.account_id = l.account_id
+                 AND lot_entry.user_id = l.user_id
+                 AND lot_entry.effective_date <= ${processingDate}::date
+                 AND (
+                   (
+                     lot_entry.entry_type = 'interest_posted'
+                     AND lot_entry.occurrence_id LIKE 'maturity:' || l.id || ':%'
+                   ) OR (
+                     lot_entry.entry_type = 'reversal'
+                     AND reversed_interest.entry_type = 'interest_posted'
+                     AND reversed_interest.occurrence_id LIKE 'maturity:' || l.id || ':%'
+                   )
+                 )
+             ), 0) AS current_balance_cents,
+             cycles.cycle,
              l.effective_date + (cycles.cycle * ${account.lockDays}) AS maturity_date
       FROM ledger_entries l
       JOIN simulated_accounts a ON a.id = l.account_id AND a.user_id = l.user_id
@@ -945,6 +1582,13 @@ export class GoalPilotRepository {
       WHERE l.account_id = ${account.accountId} AND l.user_id = ${account.userId}
         AND l.principal_cents > 0
         AND l.entry_type IN ('account_opened', 'contribution_posted')
+        AND NOT EXISTS (
+          SELECT 1 FROM ledger_entries source_reversal
+          WHERE source_reversal.reverses_entry_id = l.id
+            AND source_reversal.account_id = l.account_id
+            AND source_reversal.user_id = l.user_id
+            AND source_reversal.effective_date <= ${processingDate}::date
+        )
         AND l.effective_date + (cycles.cycle * ${account.lockDays}) <= g.target_date
         AND NOT EXISTS (
           SELECT 1 FROM ledger_entries posted
@@ -956,6 +1600,7 @@ export class GoalPilotRepository {
     return rows.map((row) => ({
       sourceEntryId: row.source_entry_id,
       principalCents: Number(row.principal_cents),
+      currentBalanceCents: Number(row.current_balance_cents),
       cycle: row.cycle,
       maturityDate: calendarDate(row.maturity_date),
     }));
@@ -973,6 +1618,51 @@ export class GoalPilotRepository {
       `;
       if (!['active', 'paused', 'purchase_ready'].includes(locked[0]?.status ?? ''))
         return { posted: false, purchaseReady: false };
+      const sourceRows = await transaction<
+        { readonly id: string; readonly current_balance_cents: string }[]
+      >`
+        SELECT source.id,
+               source.principal_cents + COALESCE((
+                 SELECT SUM(lot_entry.interest_cents)
+                 FROM ledger_entries lot_entry
+                 LEFT JOIN ledger_entries reversed_interest
+                   ON reversed_interest.id = lot_entry.reverses_entry_id
+                  AND reversed_interest.account_id = lot_entry.account_id
+                  AND reversed_interest.user_id = lot_entry.user_id
+                 WHERE lot_entry.account_id = source.account_id
+                   AND lot_entry.user_id = source.user_id
+                   AND lot_entry.effective_date <= ${input.lot.maturityDate}::date
+                   AND (
+                     (
+                       lot_entry.entry_type = 'interest_posted'
+                       AND lot_entry.occurrence_id LIKE 'maturity:' || source.id || ':%'
+                     ) OR (
+                       lot_entry.entry_type = 'reversal'
+                       AND reversed_interest.entry_type = 'interest_posted'
+                       AND reversed_interest.occurrence_id LIKE 'maturity:' || source.id || ':%'
+                     )
+                   )
+               ), 0) AS current_balance_cents
+        FROM ledger_entries source
+        WHERE source.id = ${input.lot.sourceEntryId}
+          AND source.account_id = ${input.account.accountId}
+          AND source.user_id = ${input.account.userId}
+          AND source.entry_type IN ('account_opened', 'contribution_posted')
+          AND source.principal_cents = ${input.lot.principalCents}
+          AND NOT EXISTS (
+            SELECT 1 FROM ledger_entries source_reversal
+            WHERE source_reversal.reverses_entry_id = source.id
+              AND source_reversal.account_id = source.account_id
+              AND source_reversal.user_id = source.user_id
+              AND source_reversal.effective_date <= ${input.lot.maturityDate}::date
+          )
+      `;
+      if (
+        sourceRows[0] === undefined ||
+        Number(sourceRows[0].current_balance_cents) !== input.lot.currentBalanceCents
+      ) {
+        return { posted: false, purchaseReady: false };
+      }
       const occurrenceId = `maturity:${input.lot.sourceEntryId}:${String(input.lot.cycle)}`;
       const inserted = await transaction<{ id: string }[]>`
         INSERT INTO ledger_entries (
@@ -995,23 +1685,15 @@ export class GoalPilotRepository {
         SELECT COALESCE(SUM(principal_cents + interest_cents), 0) AS balance_cents
         FROM ledger_entries WHERE account_id = ${input.account.accountId}
       `;
-      const purchaseReady =
-        input.lot.maturityDate >= input.account.targetDate &&
-        Number(balances[0]?.balance_cents ?? 0) >= input.account.targetAmountCents;
-      if (purchaseReady && locked[0]?.status !== 'purchase_ready') {
+      if (Number(balances[0]?.balance_cents ?? 0) >= input.account.targetAmountCents) {
         await transaction`
-          UPDATE simulated_accounts SET status = 'purchase_ready', next_contribution_date = NULL,
-            updated_at = now()
+          UPDATE simulated_accounts SET next_contribution_date = NULL, updated_at = now()
           WHERE id = ${input.account.accountId} AND user_id = ${input.account.userId}
-        `;
-        await transaction`
-          UPDATE goals SET status = 'purchase_ready', version = version + 1, updated_at = now()
-          WHERE id = ${input.account.goalId} AND user_id = ${input.account.userId}
         `;
       }
       return {
         posted: input.interestCents > 0,
-        purchaseReady: purchaseReady && locked[0]?.status !== 'purchase_ready',
+        purchaseReady: false,
       };
     });
   }
@@ -1021,30 +1703,36 @@ export class GoalPilotRepository {
     processingDate: string,
   ): Promise<boolean> {
     return this.database.begin(async (transaction) => {
-      const locked = await transaction<{ status: string }[]>`
-        SELECT status FROM simulated_accounts
-        WHERE id = ${account.accountId} AND user_id = ${account.userId} FOR UPDATE
+      const locked = await transaction<
+        {
+          readonly status: string;
+          readonly goal_id: string;
+          readonly target_amount_cents: string;
+        }[]
+      >`
+        SELECT simulated.status, goal.id AS goal_id, goal.target_amount_cents
+        FROM simulated_accounts simulated
+        JOIN goals goal ON goal.id = simulated.goal_id AND goal.user_id = simulated.user_id
+        WHERE simulated.id = ${account.accountId} AND simulated.user_id = ${account.userId}
+        FOR UPDATE OF simulated, goal
       `;
-      const balances = await transaction<{ balance_cents: string }[]>`
-        SELECT COALESCE(SUM(principal_cents + interest_cents), 0) AS balance_cents
-        FROM ledger_entries
-        WHERE account_id = ${account.accountId} AND user_id = ${account.userId}
+      const current = locked[0];
+      if (current?.status !== 'active') return false;
+      const balances = await transaction<{ available_balance_cents: string }[]>`
+        SELECT simulated_account_available_balance(
+          ${account.accountId}, ${account.userId}, ${processingDate}::date
+        ) AS available_balance_cents
       `;
-      if (
-        !['active', 'paused'].includes(locked[0]?.status ?? '') ||
-        ((account.vehicleCode === 'cd_ladder' || account.vehicleCode === 'treasury_ladder') &&
-          processingDate < account.targetDate) ||
-        Number(balances[0]?.balance_cents ?? 0) < account.targetAmountCents
-      )
+      if (Number(balances[0]?.available_balance_cents ?? 0) < Number(current.target_amount_cents))
         return false;
       await transaction`
         UPDATE simulated_accounts SET status = 'purchase_ready', next_contribution_date = NULL,
           updated_at = now()
-        WHERE id = ${account.accountId} AND user_id = ${account.userId}
+        WHERE id = ${account.accountId} AND user_id = ${account.userId} AND status = 'active'
       `;
       await transaction`
         UPDATE goals SET status = 'purchase_ready', version = version + 1, updated_at = now()
-        WHERE id = ${account.goalId} AND user_id = ${account.userId}
+        WHERE id = ${current.goal_id} AND user_id = ${account.userId} AND status = 'active'
       `;
       return true;
     });
@@ -1056,23 +1744,71 @@ export class GoalPilotRepository {
     readonly accrualMicros: number;
     readonly postInterestCents: number;
     readonly postingBoundary: boolean;
-  }): Promise<{ readonly accrued: boolean; readonly purchaseReady: boolean }> {
+    readonly expectedLastAccrualDate: string;
+    readonly expectedAccruedInterestMicros: number;
+    readonly expectedBalanceCents: number;
+    readonly expectedLedgerEntryCount: number;
+  }): Promise<{
+    readonly status: 'accrued' | 'already_processed' | 'revision_conflict' | 'inactive';
+    readonly purchaseReady: boolean;
+  }> {
     return this.database.begin(async (transaction) => {
       const locked = await transaction<
-        { last_accrual_date: string | Date; accrued_interest_micros: string; status: string }[]
+        {
+          last_accrual_date: string | Date;
+          accrued_interest_micros: string;
+          status: string;
+          goal_id: string;
+          goal_version: number;
+          target_amount_cents: string;
+          target_date: string | Date;
+          plan_version_id: string;
+        }[]
       >`
-        SELECT last_accrual_date, accrued_interest_micros, status FROM simulated_accounts
-        WHERE id = ${input.account.accountId} AND user_id = ${input.account.userId} FOR UPDATE
+        SELECT simulated.last_accrual_date, simulated.accrued_interest_micros,
+               simulated.status, simulated.plan_version_id,
+               goal.id AS goal_id, goal.version AS goal_version,
+               goal.target_amount_cents, goal.target_date
+        FROM simulated_accounts simulated
+        JOIN goals goal ON goal.id = simulated.goal_id AND goal.user_id = simulated.user_id
+        WHERE simulated.id = ${input.account.accountId}
+          AND simulated.user_id = ${input.account.userId}
+        FOR UPDATE OF simulated, goal
       `;
       const lockedAccount = locked[0];
-      if (lockedAccount === undefined) return { accrued: false, purchaseReady: false };
       if (
-        !['active', 'paused', 'purchase_ready'].includes(lockedAccount.status) ||
-        calendarDate(lockedAccount.last_accrual_date) >= input.accrualDate
-      )
-        return { accrued: false, purchaseReady: false };
+        lockedAccount === undefined ||
+        !['active', 'paused', 'purchase_ready'].includes(lockedAccount.status)
+      ) {
+        return { status: 'inactive', purchaseReady: false };
+      }
+      if (calendarDate(lockedAccount.last_accrual_date) >= input.accrualDate) {
+        return { status: 'already_processed', purchaseReady: false };
+      }
+      const financialRevision = await transaction<
+        { readonly balance_cents: string; readonly ledger_entry_count: string }[]
+      >`
+        SELECT COALESCE(SUM(principal_cents + interest_cents), 0) AS balance_cents,
+               COUNT(*) AS ledger_entry_count
+        FROM ledger_entries
+        WHERE account_id = ${input.account.accountId} AND user_id = ${input.account.userId}
+          AND effective_date <= ${input.accrualDate}::date
+      `;
+      const revision = financialRevision[0];
+      if (
+        calendarDate(lockedAccount.last_accrual_date) !== input.expectedLastAccrualDate ||
+        Number(lockedAccount.accrued_interest_micros) !== input.expectedAccruedInterestMicros ||
+        Number(revision?.balance_cents ?? 0) !== input.expectedBalanceCents ||
+        Number(revision?.ledger_entry_count ?? 0) !== input.expectedLedgerEntryCount ||
+        lockedAccount.goal_version !== input.account.goalVersion ||
+        lockedAccount.plan_version_id !== input.account.planVersionId ||
+        Number(lockedAccount.target_amount_cents) !== input.account.targetAmountCents ||
+        calendarDate(lockedAccount.target_date) !== input.account.targetDate
+      ) {
+        return { status: 'revision_conflict', purchaseReady: false };
+      }
       const totalMicros = Number(lockedAccount.accrued_interest_micros) + input.accrualMicros;
-      await transaction`
+      const accrualEntries = await transaction<{ readonly id: string }[]>`
         INSERT INTO ledger_entries (
           id, account_id, user_id, entry_type, effective_date, occurrence_id, description
         ) VALUES (
@@ -1080,10 +1816,14 @@ export class GoalPilotRepository {
           ${input.accrualDate}, ${`accrual:${input.account.accountId}:${input.accrualDate}`},
           'Modeled daily interest accrued'
         ) ON CONFLICT (account_id, occurrence_id) WHERE occurrence_id IS NOT NULL DO NOTHING
+        RETURNING id
       `;
+      if (accrualEntries[0] === undefined) {
+        return { status: 'already_processed', purchaseReady: false };
+      }
       if (input.postInterestCents > 0) {
         const occurrenceId = `interest:${input.account.accountId}:${input.accrualDate}`;
-        await transaction`
+        const postingEntries = await transaction<{ readonly id: string }[]>`
           INSERT INTO ledger_entries (
             id, account_id, user_id, entry_type, interest_cents, effective_date,
             occurrence_id, description
@@ -1092,7 +1832,11 @@ export class GoalPilotRepository {
             ${input.postInterestCents}, ${input.accrualDate}, ${occurrenceId},
             'Modeled interest posted'
           ) ON CONFLICT (account_id, occurrence_id) WHERE occurrence_id IS NOT NULL DO NOTHING
+          RETURNING id
         `;
+        if (postingEntries[0] === undefined) {
+          throw new StateConflictError('The interest posting was already recorded.');
+        }
       }
       await transaction`
         UPDATE simulated_accounts SET last_accrual_date = ${input.accrualDate},
@@ -1100,14 +1844,15 @@ export class GoalPilotRepository {
           updated_at = now()
         WHERE id = ${input.account.accountId} AND user_id = ${input.account.userId}
       `;
-      const balances = await transaction<{ balance_cents: string }[]>`
-        SELECT COALESCE(SUM(principal_cents + interest_cents), 0) AS balance_cents
-        FROM ledger_entries
-        WHERE account_id = ${input.account.accountId} AND user_id = ${input.account.userId}
+      const balances = await transaction<{ available_balance_cents: string }[]>`
+        SELECT simulated_account_available_balance(
+          ${input.account.accountId}, ${input.account.userId}, ${input.accrualDate}::date
+        ) AS available_balance_cents
       `;
       const purchaseReady =
-        Number(balances[0]?.balance_cents ?? 0) >= input.account.targetAmountCents;
-      const transitioned = purchaseReady && lockedAccount.status !== 'purchase_ready';
+        Number(balances[0]?.available_balance_cents ?? 0) >=
+        Number(lockedAccount.target_amount_cents);
+      const transitioned = purchaseReady && lockedAccount.status === 'active';
       if (transitioned) {
         await transaction`
           UPDATE simulated_accounts SET status = 'purchase_ready', next_contribution_date = NULL
@@ -1115,10 +1860,11 @@ export class GoalPilotRepository {
         `;
         await transaction`
           UPDATE goals SET status = 'purchase_ready', version = version + 1, updated_at = now()
-          WHERE id = ${input.account.goalId} AND user_id = ${input.account.userId}
+          WHERE id = ${lockedAccount.goal_id} AND user_id = ${input.account.userId}
+            AND status = 'active'
         `;
       }
-      return { accrued: true, purchaseReady: transitioned };
+      return { status: 'accrued', purchaseReady: transitioned };
     });
   }
 
@@ -1145,27 +1891,263 @@ export class GoalPilotRepository {
     `;
   }
 
-  public async exportUserData(userId: string): Promise<Readonly<Record<string, unknown>> | null> {
-    const user = await this.getUser(userId);
-    if (user === null) return null;
-    const goals = await this.listGoals(userId);
-    const plans = await this.database`
-      SELECT id, goal_id, version, vehicle_code, assumption_version, normalized_input,
-             calculation_output, created_at
-      FROM plan_versions WHERE user_id = ${userId} ORDER BY created_at
-    `;
-    const activity = await this.database`
-      SELECT l.id, a.goal_id, l.entry_type, l.principal_cents, l.interest_cents,
-             l.effective_date, l.description, l.created_at
-      FROM ledger_entries l JOIN simulated_accounts a ON a.id = l.account_id
-      WHERE l.user_id = ${userId} AND a.user_id = ${userId} ORDER BY l.created_at
-    `;
-    return { exportedAt: new Date().toISOString(), user, goals, plans, activity };
+  public async exportUserData(userId: string): Promise<UserDataExport | null> {
+    return this.database.begin(async (transaction) => {
+      const userRows = await transaction<ExportUserRow[]>`
+        SELECT id, email, display_name, created_at, updated_at
+        FROM users WHERE id = ${userId} AND deleted_at IS NULL
+      `;
+      const userRow = userRows[0];
+      if (userRow === undefined) return null;
+
+      const goalRows = await transaction<GoalRow[]>`
+        SELECT * FROM goals WHERE user_id = ${userId} ORDER BY created_at, id
+      `;
+      const draftRows = await transaction<ExportRecordRow[]>`
+        SELECT jsonb_build_object(
+          'id', id,
+          'schemaVersion', schema_version,
+          'draftData', draft_data,
+          'lastCompletedStep', last_completed_step,
+          'version', version,
+          'createdAt', created_at,
+          'updatedAt', updated_at
+        ) AS record
+        FROM goal_drafts WHERE user_id = ${userId} ORDER BY updated_at, id
+      `;
+      const clockRows = await transaction<ExportRecordRow[]>`
+        SELECT jsonb_build_object(
+          'initialApplicationDate', initial_application_date,
+          'applicationDate', application_date,
+          'version', version,
+          'createdAt', created_at,
+          'updatedAt', updated_at
+        ) AS record
+        FROM user_application_clocks WHERE user_id = ${userId}
+      `;
+      const capabilityRows = await transaction<ExportRecordRow[]>`
+        SELECT jsonb_build_object(
+          'fixtureKey', fixture_key,
+          'fixtureVersion', fixture_version,
+          'resetGeneration', reset_generation,
+          'createdAt', created_at,
+          'updatedAt', updated_at
+        ) AS record
+        FROM demo_fixture_users WHERE user_id = ${userId}
+      `;
+      const planRows = await transaction<ExportRecordRow[]>`
+        SELECT jsonb_build_object(
+          'id', id,
+          'goalId', goal_id,
+          'version', version,
+          'vehicleCode', vehicle_code,
+          'assumptionVersion', assumption_version,
+          'normalizedInput', normalized_input,
+          'calculationOutput', calculation_output,
+          'calculationContext', calculation_context,
+          'applicationDate', application_date,
+          'scheduleAnchorDate', schedule_anchor_date,
+          'calculationPolicyVersion', calculation_policy_version,
+          'rankingPolicyVersion', ranking_policy_version,
+          'healthPolicyVersion', health_policy_version,
+          'changeKind', change_kind,
+          'changedField', changed_field,
+          'changeReasonCode', change_reason_code,
+          'changePayload', change_payload,
+          'omittedContributionDates', omitted_contribution_dates,
+          'basePlanVersionId', base_plan_version_id,
+          'createdAt', created_at
+        ) AS record
+        FROM plan_versions WHERE user_id = ${userId} ORDER BY goal_id, version, id
+      `;
+      const accountRows = await transaction<ExportRecordRow[]>`
+        SELECT jsonb_build_object(
+          'id', a.id,
+          'goalId', a.goal_id,
+          'planVersionId', a.plan_version_id,
+          'status', CASE
+            WHEN g.status = 'archived' AND g.archive_reason <> 'GOAL_COMPLETED'
+              THEN 'archived'
+            ELSE a.status
+          END,
+          'nextContributionDate', a.next_contribution_date,
+          'lastProcessedDate', a.last_processed_date,
+          'lastAccrualDate', a.last_accrual_date,
+          'accruedInterestMicros', a.accrued_interest_micros,
+          'createdAt', a.created_at,
+          'updatedAt', a.updated_at
+        ) AS record
+        FROM simulated_accounts a
+        JOIN goals g ON g.id = a.goal_id AND g.user_id = a.user_id
+        WHERE a.user_id = ${userId} ORDER BY a.created_at, a.id
+      `;
+      const ledgerRows = await transaction<ExportRecordRow[]>`
+        SELECT jsonb_build_object(
+          'id', id,
+          'accountId', account_id,
+          'entryType', entry_type,
+          'principalCents', principal_cents,
+          'interestCents', interest_cents,
+          'effectiveDate', effective_date,
+          'occurrenceId', occurrence_id,
+          'description', description,
+          'reversesEntryId', reverses_entry_id,
+          'createdAt', created_at
+        ) AS record
+        FROM ledger_entries
+        WHERE user_id = ${userId} ORDER BY effective_date, created_at, id
+      `;
+      const scheduleRows = await transaction<ExportRecordRow[]>`
+        SELECT jsonb_build_object(
+          'id', id,
+          'accountId', account_id,
+          'dueDate', due_date,
+          'status', status,
+          'createdAt', created_at
+        ) AS record
+        FROM schedule_occurrences WHERE user_id = ${userId} ORDER BY due_date, id
+      `;
+      const interestPeriodRows = await transaction<ExportRecordRow[]>`
+        SELECT jsonb_build_object(
+          'accountId', account_id,
+          'periodEnd', period_end,
+          'ledgerEntryId', ledger_entry_id
+        ) AS record
+        FROM interest_posting_periods WHERE user_id = ${userId} ORDER BY period_end, account_id
+      `;
+      const purchaseItemRows = await transaction<ExportRecordRow[]>`
+        SELECT jsonb_build_object(
+          'id', id,
+          'goalId', goal_id,
+          'fixtureCode', fixture_code,
+          'displayName', display_name,
+          'currency', currency,
+          'targetPriceCents', target_price_cents,
+          'version', version,
+          'lifecycle', lifecycle,
+          'createdAt', created_at,
+          'updatedAt', updated_at
+        ) AS record
+        FROM purchase_items WHERE user_id = ${userId} ORDER BY created_at, id
+      `;
+      const watchPolicyRows = await transaction<ExportRecordRow[]>`
+        SELECT jsonb_build_object(
+          'id', id,
+          'purchaseItemId', purchase_item_id,
+          'version', version,
+          'cadence', cadence,
+          'nextDueDate', next_due_date,
+          'freshnessLimitDays', freshness_limit_days,
+          'analysisPolicyVersion', analysis_policy_version,
+          'enabled', enabled,
+          'createdAt', created_at
+        ) AS record
+        FROM price_watch_policies
+        WHERE user_id = ${userId} ORDER BY purchase_item_id, version, id
+      `;
+      const checkRunRows = await transaction<ExportRecordRow[]>`
+        SELECT jsonb_build_object(
+          'id', id,
+          'priceWatchPolicyId', price_watch_policy_id,
+          'purchaseItemId', purchase_item_id,
+          'applicationDate', application_date,
+          'fixtureSourceVersion', fixture_source_version,
+          'fixtureSourceChecksum', fixture_source_checksum,
+          'status', status,
+          'errorCode', error_code,
+          'attemptCount', attempt_count,
+          'claimedAt', claimed_at,
+          'completedAt', completed_at
+        ) AS record
+        FROM price_check_runs WHERE user_id = ${userId} ORDER BY application_date, id
+      `;
+      const observationRows = await transaction<ExportRecordRow[]>`
+        SELECT jsonb_build_object(
+          'id', id,
+          'priceCheckRunId', price_check_run_id,
+          'purchaseItemId', purchase_item_id,
+          'fixtureSourceVersion', fixture_source_version,
+          'observationKey', observation_key,
+          'observedOn', observed_on,
+          'priceCents', price_cents,
+          'currency', currency,
+          'createdAt', created_at
+        ) AS record
+        FROM price_observations
+        WHERE user_id = ${userId} ORDER BY observed_on, observation_key, id
+      `;
+      const assessmentRows = await transaction<ExportRecordRow[]>`
+        SELECT jsonb_build_object(
+          'id', id,
+          'priceCheckRunId', price_check_run_id,
+          'purchaseItemId', purchase_item_id,
+          'goalId', goal_id,
+          'priceWatchPolicyVersion', price_watch_policy_version,
+          'planVersionId', plan_version_id,
+          'planVersionNumber', plan_version_number,
+          'planLifecycle', plan_lifecycle,
+          'planHealth', plan_health,
+          'planHealthPolicyVersion', plan_health_policy_version,
+          'analysisPolicyVersion', analysis_policy_version,
+          'fixtureSourceVersion', fixture_source_version,
+          'fixtureSourceChecksum', fixture_source_checksum,
+          'asOfDate', as_of_date,
+          'currency', currency,
+          'assessmentState', assessment_state,
+          'rationaleCodes', rationale_codes,
+          'seasonalSummary', seasonal_summary,
+          'observationCount', observation_count,
+          'earliestObservationDate', earliest_observation_date,
+          'latestObservationDate', latest_observation_date,
+          'dataSpanDays', data_span_days,
+          'freshnessDays', freshness_days,
+          'currentPriceCents', current_price_cents,
+          'targetPriceCents', target_price_cents,
+          'minimumPriceCents', minimum_price_cents,
+          'medianPriceCents', median_price_cents,
+          'maximumPriceCents', maximum_price_cents,
+          'currentPercentileBasisPoints', current_percentile_basis_points,
+          'differenceFromMedianCents', difference_from_median_cents,
+          'differenceFromTargetCents', difference_from_target_cents,
+          'createdAt', created_at
+        ) AS record
+        FROM purchase_timing_assessments
+        WHERE user_id = ${userId} ORDER BY as_of_date, id
+      `;
+
+      return {
+        schemaVersion: userDataExportSchemaVersion,
+        exportedAt: new Date().toISOString(),
+        user: {
+          id: userRow.id,
+          email: userRow.email,
+          displayName: userRow.display_name,
+          createdAt: userRow.created_at.toISOString(),
+          updatedAt: userRow.updated_at.toISOString(),
+        },
+        goalDrafts: draftRows.map((row) => row.record),
+        userApplicationClock: clockRows[0]?.record ?? null,
+        demoFixtureCapability: capabilityRows[0]?.record ?? null,
+        goals: goalRows.map(mapGoal),
+        planVersions: planRows.map((row) => row.record),
+        simulatedAccounts: accountRows.map((row) => row.record),
+        ledgerEntries: ledgerRows.map((row) => row.record),
+        scheduleOccurrences: scheduleRows.map((row) => row.record),
+        interestPostingPeriods: interestPeriodRows.map((row) => row.record),
+        purchaseTiming: {
+          items: purchaseItemRows.map((row) => row.record),
+          watchPolicies: watchPolicyRows.map((row) => row.record),
+          checkRuns: checkRunRows.map((row) => row.record),
+          observations: observationRows.map((row) => row.record),
+          assessments: assessmentRows.map((row) => row.record),
+        },
+      };
+    });
   }
 
   public async createCompletedExport(userId: string): Promise<{
     readonly requestId: string;
-    readonly data: Readonly<Record<string, unknown>>;
+    readonly data: UserDataExport;
   }> {
     const data = await this.exportUserData(userId);
     if (data === null) throw new Error('User no longer exists.');

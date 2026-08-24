@@ -1,9 +1,9 @@
 # GoalPilot MVP Product Requirements Document
 
-**Document owner:** Xavier Kubancik  
-**Status:** Approved local product-experience baseline
-**Version:** 1.1
-**Baseline date:** 2026-08-23  
+**Document owner:** Xavier Kubancik<br>
+**Status:** Approved local product-experience baseline<br>
+**Version:** 1.1<br>
+**Baseline date:** 2026-08-23<br>
 **Target release:** Local product-experience release for structured user validation
 
 > **Current release authority:** Local M00–M18 acceptance and the subsequent product-experience
@@ -15,7 +15,11 @@ explicitly says otherwise. They are not acceptance criteria for the current loca
 
 ## 1. Purpose
 
-This document defines the first buildable version of GoalPilot. It replaces the earlier production-heavy architecture with a deliberately inexpensive MVP that still demonstrates the core product thesis, full-stack engineering, cloud deployment, cybersecurity discipline, and an extensible path to real interest-bearing partner accounts.
+This document defines the first buildable version of GoalPilot. It replaces the earlier
+production-heavy architecture with a deliberately inexpensive local MVP that demonstrates the core
+product thesis, full-stack engineering, cybersecurity discipline, and an extensible path to future
+cloud/provider adapters. Cloud deployment is a future M19–M22 objective, not a claim about the
+current release.
 
 GoalPilot helps a user answer a concrete question:
 
@@ -43,7 +47,8 @@ The following earlier assumptions are superseded for this MVP:
 - The MVP will **not** deploy the fixed-cost ECS, ALB, private-subnet, NAT Gateway, WAF, and RDS topology.
 - The MVP will **not** implement live money movement, account opening, Plaid, custody, brokerage execution, or real recurring ACH.
 - The MVP will **not** use live financial rates unless a trustworthy source and approval workflow are added later.
-- The MVP will **not** claim that an implementation already exists. Completion is established only by repository code and passing evidence.
+- Documentation will **not** infer completion from this plan. Current behavior claims require
+  repository implementation, and command-pass claims require exact executed evidence.
 
 ## 3. Product vision
 
@@ -85,7 +90,8 @@ The MVP must:
 6. Allow an authenticated user to save a goal and activate a simulated plan.
 7. Support manual simulated contributions and optional scheduled demo contributions.
 8. Recalculate progress using an immutable vehicle-assumption version.
-9. Demonstrate secure full-stack design and low-cost AWS deployment.
+9. Demonstrate secure local full-stack design while preserving a path to a separately gated,
+   low-cost AWS adaptation.
 10. Preserve clean provider interfaces for later bank, funding, and rate integrations.
 
 ## 5. Non-goals
@@ -190,7 +196,11 @@ Each goal contains:
 - optional notes;
 - status: draft, active, paused, purchase_ready, completed, archived.
 
-### 8.3 User-visible screens
+### 8.3 User-visible views and regions
+
+The current React router exposes `/`, `/signin`, `/plan`, and `/dashboard`. Comparison, plan
+detail, activity, and privacy controls are regions inside those pages rather than additional
+routes.
 
 1. **Public landing page**
    - Product promise.
@@ -199,7 +209,9 @@ Each goal contains:
    - Call to action.
 
 2. **Authentication**
-   - Sign up, sign in, verify email, reset password, and sign out through Cognito.
+   - Current local release: create a local profile, sign in, and sign out through hashed opaque
+     server sessions.
+   - Future M19–M22: Cognito sign-up/sign-in, email verification, password reset, and MFA.
 
 3. **Dashboard**
    - Active goal card.
@@ -211,25 +223,27 @@ Each goal contains:
    - Immediate zero-interest feasibility feedback.
    - Clear explanation of every input.
 
-5. **Vehicle comparison**
+5. **Vehicle comparison within the builder**
    - Eligible and rejected products.
    - Required contribution, modeled ending balance, modeled interest, access, and reason codes.
    - Recommended simulated fit based on deterministic policy.
 
-6. **Plan detail**
+6. **Plan detail workspace within the dashboard**
    - Principal contributed versus modeled interest.
    - Progress chart.
-   - Contribution schedule.
+   - Next derived contribution date and processed simulated activity.
    - Assumption snapshot.
-   - Pause, resume, edit, archive, complete, and add simulated contribution actions.
+   - Pause, resume, archive, complete, and add simulated contribution actions. Goal metadata update
+     exists in the compatibility API but is not a current dashboard editing control.
 
-7. **Activity ledger**
-   - Simulated contribution, interest-credit, adjustment, and reversal records.
+7. **Activity ledger within the dashboard**
+   - Opening savings; scheduled/posted/failed contributions; accrued/posted interest; lifecycle and
+     plan-change activity; simulated withdrawal and reversal records where present.
 
-8. **Settings**
-   - Account profile.
+8. **Profile data controls within the dashboard**
+   - Current profile context.
    - Data export request.
-   - Account deletion request.
+   - Account deletion request. There is no separate current settings route.
 
 ### 8.4 Explicit product language
 
@@ -250,17 +264,21 @@ Every projection or plan screen must include language equivalent to:
 
 ### Flow B: Create and activate a simulated plan
 
-1. Authenticated user creates a goal.
-2. API verifies identity and validates input.
-3. API stores the goal with the user's Cognito subject.
-4. User selects an eligible simulated vehicle.
-5. API creates an immutable assumption snapshot and active simulated account.
-6. User sees the plan dashboard and upcoming simulated schedule.
+1. Authenticated user saves an owner-scoped partial goal draft.
+2. API verifies the local server session and validates each strict draft update.
+3. User reveals the safe baseline, completes budget/access inputs, and selects an eligible
+   simulated vehicle.
+4. Activation revalidates the complete goal and atomically creates goal, immutable plan v1,
+   simulated account, opening ledger activity, idempotency response, and audit event.
+5. The API stores the schedule anchor and next derived contribution date, then removes the draft.
+6. User sees the plan dashboard. Future schedule rows are not pre-created; processed due dates are
+   recorded as Autopilot runs.
 
 ### Flow C: Add a simulated contribution
 
 1. User selects **Add contribution**.
-2. User enters amount and effective date.
+2. User enters the amount; the UI displays the server-provided current application date as a
+   read-only effective date.
 3. API validates ownership and amount.
 4. API writes a ledger entry idempotently.
 5. API recalculates the balance and projection.
@@ -268,12 +286,19 @@ Every projection or plan screen must include language equivalent to:
 
 ### Flow D: Demo autopilot
 
-1. User enables demo autopilot and confirms cadence.
-2. A scheduled cloud job finds due simulated contributions.
-3. The job creates one idempotent contribution per due schedule.
-4. It accrues modeled interest through the processing date.
-5. It updates the projection and records an audit event.
-6. User sees the next contribution and updated balance.
+1. The marked local Japan-demo user chooses one allowed milestone.
+2. The API checks the persisted fixture capability and claims one ten-minute financial-run lease
+   on that user's application clock; an active owner run or guarded concurrent mutation conflicts.
+3. The selected target is raised through any persisted financial high-water date left ahead of the
+   clock by an interrupted run, so replay can complete it rather than use future state early.
+4. The local Autopilot use case derives due contributions and creates one idempotent processed
+   occurrence per account/date.
+5. It accrues/posts modeled interest through the milestone using processing-date balances and
+   bounded revision reload/recalculation, then evaluates purchase readiness.
+6. It releases only its matching current lease token; ownership loss fails closed.
+7. User sees the new application date, next event, contribution/interest counts and amount, health,
+   and safe failure codes.
+8. EventBridge or another scheduled cloud invocation remains future M19+ work.
 
 ### Flow E: Goal becomes purchase-ready
 
@@ -287,15 +312,30 @@ Every projection or plan screen must include language equivalent to:
 
 ### 10.1 Authentication and users
 
-- **AUTH-001:** Use Amazon Cognito for email-based sign-up and sign-in.
-- **AUTH-002:** Verify JWT signature, issuer, client ID, token use, and expiration server-side.
+- **AUTH-L01 (current local):** Use `LocalAuthProvider`, salted scrypt password hashes, random
+  opaque session/CSRF tokens stored only as hashes, and local profile registration/login.
+- **AUTH-L02 (current local):** Require exact Origin on every mutation and CSRF on authenticated
+  API mutations/logout; use `HttpOnly`/`SameSite=Lax` session cookies and a readable
+  `SameSite=Lax` CSRF cookie. `Secure=false` is allowed only for current local/test HTTP.
+- **AUTH-001 (future M19–M22):** Use Amazon Cognito for email-based sign-up and sign-in.
+- **AUTH-002 (future M19–M22):** Verify JWT signature, issuer, client ID, token use, and expiration
+  server-side.
 - **AUTH-003:** Never trust a user ID supplied in request body, query, or URL as ownership proof.
 - **AUTH-004:** Hide whether another user's goal exists; inaccessible resources return 404.
-- **AUTH-005:** Support TOTP MFA configuration in infrastructure, optional for MVP testers and mandatory before any real financial integration.
+- **AUTH-005 (future M19–M22):** Support TOTP MFA configuration in infrastructure, optional for
+  early cloud testers and mandatory before any real financial integration.
+
+Current 403/404 semantics are deliberate: owner-filtered missing/foreign resources and unregistered
+feature routes return 404; 403 is limited to non-resource policy denial such as Origin/CSRF failure
+or demo advance by an authenticated user without the persisted seeded-fixture capability.
 
 ### 10.2 Goal management
 
-- **GOAL-001:** Create, retrieve, update, pause, resume, complete, archive, and delete a user-owned goal.
+- **GOAL-001:** Create, retrieve, update, pause, resume, complete, archive, and delete a user-owned
+  goal.
+  - Current implementation note: local PX exposes create/read/update/lifecycle/archive and
+    account-wide deletion, but no per-goal hard-delete route. The route inventory therefore does
+    not claim this last operation; archive is the consumer history behavior in PX00–PX10.
 - **GOAL-002:** Use optimistic concurrency through a version number or ETag.
 - **GOAL-003:** Use idempotency keys for goal creation and simulated contribution creation.
 - **GOAL-004:** Store money as integer cents and dates as ISO calendar dates.
@@ -320,18 +360,36 @@ Every projection or plan screen must include language equivalent to:
 - **VEH-003:** CD models are rejected when the liquidity requirement conflicts with lock or penalty assumptions.
 - **VEH-004:** Treasury models are rejected when maturity falls after the goal date.
 - **VEH-005:** Capital-preservation-required goals exclude any future market-value vehicle automatically.
-- **VEH-006:** The recommended option is the eligible product that reaches the goal with the lowest required contribution, then highest modeled ending balance, then highest liquidity.
+- **VEH-006:** Ranking policy `vehicle-fit-v2` orders by eligibility, purchase readiness using the
+  zero-interest safe contribution, declared access satisfaction, lower liquidity/lock conflict,
+  higher modeled target-date cushion, then vehicle code. Return never overrides access or
+  maturity.
 - **VEH-007:** Compensation or affiliate status is not part of the ranking function.
 
 ### 10.5 Simulated account and ledger
 
 - **SIM-001:** An active goal may have one simulated account tied to one assumption snapshot.
-- **SIM-002:** Ledger entry types are contribution, interest_credit, adjustment, and reversal.
-- **SIM-003:** Ledger entries are append-only; corrections use reversals.
+- **SIM-002:** Current persisted entry types are `account_opened`, `contribution_scheduled`,
+  `contribution_posted`, `contribution_failed`, `interest_accrued`, `interest_posted`, `paused`,
+  `resumed`, `goal_completed`, `simulated_withdrawal`, `reversal`, and `plan_changed`; amount/type
+  checks constrain which may carry principal or interest.
+- **SIM-003:** Ledger entries are append-only; a correction is the single exact same-account
+  reversal of an `account_opened`, `contribution_posted`, or `interest_posted` credit and cannot
+  reverse another reversal or non-credit activity.
 - **SIM-004:** A scheduled contribution has a unique schedule occurrence ID.
-- **SIM-005:** Re-running a scheduled job cannot duplicate a contribution or interest posting.
-- **SIM-006:** Balance is derived from the ledger and may be cached only with a reconciliation test.
-- **SIM-007:** Changing the selected vehicle creates a new plan version; it never rewrites prior history.
+- **SIM-005:** Re-running a scheduled job cannot duplicate a contribution or interest posting. The
+  current Story route permits one unexpired ten-minute owner financial run, rejects guarded
+  concurrent mutations, permits stale reclaim only after expiry, and requires matching-token
+  release. Interest must reject a stale processing-date financial revision, reload/recalculate,
+  and stop after three conflicts; future-effective ledger rows cannot affect an earlier date.
+- **SIM-006:** Total balance is the signed ledger sum. Fixed-term availability must exclude reversed
+  source lots and account for reversed maturity interest; any cache requires a reconciliation test.
+- **SIM-007:** Changing the selected vehicle must create a new plan version and never rewrite prior
+  history. Current What-If/Recovery intentionally keeps the vehicle fixed and exposes no vehicle
+  change operation.
+- **SIM-008:** Draft activation and plan changes persist a schedule anchor and next contribution
+  date, but do not pre-create future `schedule_occurrences`; that table records processed dates
+  only.
 
 ### 10.6 Assumptions
 
@@ -339,32 +397,63 @@ Every projection or plan screen must include language equivalent to:
 - **RATE-002:** Each assumption includes vehicle code, APY or yield, effective date, retrieval/review date, liquidity, lock, minimum, source label, and `illustrative=true`.
 - **RATE-003:** The UI displays the exact version used by each saved plan.
 - **RATE-004:** An administrator interface is not required; changing assumptions is a reviewed migration or seed update.
-- **RATE-005:** A future `RateProvider` interface must allow a live provider without changing calculation consumers.
+- **RATE-005:** The current `RateProvider` port must allow a future approved live adapter without
+  changing calculation consumers.
 
 ### 10.7 Privacy and audit
 
-- **PRIV-001:** Provide a machine-readable export of user, goal, plan, and ledger data.
+- **PRIV-001:** Provide a machine-readable export of user, goal, plan, and ledger data. Current
+  `goalpilot-user-data-export-v2` validates every record against its strict allowlist; Timing run
+  attempts may be exported, but worker tokens/lease expiries and other command/idempotency
+  internals do not cross the export boundary.
 - **PRIV-002:** Provide an account-deletion workflow with a documented retention boundary.
 - **AUDIT-001:** Append audit events for authentication-sensitive and goal-state-changing actions.
 - **AUDIT-002:** Audit metadata must not contain secrets, JWTs, cookies, full request bodies, or unnecessary financial values.
 
 ## 11. Data model
 
-Minimum relational records:
+The current ordered committed migrations create these records; executed release evidence records
+the exact final migration/checksum inventory:
 
-| Record                        | Purpose                                                                       |
-| ----------------------------- | ----------------------------------------------------------------------------- |
-| `users`                       | Internal profile keyed by Cognito subject.                                    |
-| `goals`                       | User-owned goal, contribution plan, status, and version.                      |
-| `vehicle_assumption_versions` | Immutable catalog version metadata.                                           |
-| `vehicle_assumptions`         | Vehicle parameters belonging to a catalog version.                            |
-| `plan_versions`               | Immutable selected vehicle, normalized input, output, and assumption version. |
-| `simulated_accounts`          | Active simulated account and plan reference.                                  |
-| `ledger_entries`              | Append-only principal, interest, adjustment, and reversal events.             |
-| `schedule_occurrences`        | Idempotent recurring simulation work.                                         |
-| `idempotency_records`         | User-scoped request replay protection.                                        |
-| `audit_events`                | Security-safe event history.                                                  |
-| `data_requests`               | Export or deletion request state.                                             |
+| Record                        | Current local purpose                                                      |
+| ----------------------------- | -------------------------------------------------------------------------- |
+| `users`                       | Local profile, email/display name, salted password hash.                   |
+| `sessions`                    | Hashed opaque session/CSRF state and idle/absolute expiry.                 |
+| `goal_drafts`                 | Owner-scoped strict partial builder JSON with optimistic version.          |
+| `goals`                       | Complete user-owned goal, lifecycle/version, and archive provenance.       |
+| `vehicle_assumption_versions` | Immutable illustrative catalog metadata.                                   |
+| `vehicle_assumptions`         | Immutable parameters belonging to one catalog version.                     |
+| `plan_versions`               | Immutable input/output/context, policy, schedule, and change provenance.   |
+| `simulated_accounts`          | One simulated account and current-plan/next-date pointer per goal.         |
+| `ledger_entries`              | Append-only simulated money and lifecycle/activity events.                 |
+| `schedule_occurrences`        | Processed (not future) due dates, unique per account/date.                 |
+| `interest_posting_periods`    | Interest-posting replay protection tied to exact ledger entries.           |
+| `idempotency_records`         | Completed user/operation/key response replay.                              |
+| `application_command_claims`  | Leased, fail-closed in-flight command claims.                              |
+| `audit_events`                | Security-safe history retained pseudonymously after account deletion.      |
+| `data_requests`               | Completed export request state; deletion completion is retained in audit.  |
+| `application_clock`           | Singleton anonymous/default compatibility clock.                           |
+| `user_application_clocks`     | Per-user date/version plus bounded Story financial-run token/expiry.       |
+| `demo_fixture_users`          | Persisted capability and reset generation for the Japan fixture.           |
+| `product_events`              | Unlinked append-only pseudonymous closed categorical events.               |
+| `purchase_items`              | Owned allowlisted synthetic Timing item and target price.                  |
+| `price_watch_policies`        | Immutable weekly/monthly watch-policy versions.                            |
+| `price_check_runs`            | Unique owned policy/date result plus bounded provider-worker lease.        |
+| `price_observations`          | Append-only exact fixture observations and provider keys.                  |
+| `purchase_timing_assessments` | Immutable plan-readiness/statistics/provenance snapshot per completed run. |
+
+Protected child relationships use composite owner keys. Future contribution dates are derived from
+the immutable schedule anchor; only processed dates appear in `schedule_occurrences`.
+Archiving closes the persisted simulated account with its existing terminal `completed` value and
+clears the next contribution. For `USER_REQUESTED` or `NO_LONGER_PURSUED`, the API derives the
+consumer account summary as `archived` from goal provenance and retains actual progress; it does
+not mislabel an underfunded archive as completed or force it to 100%.
+
+Current-schema writes capture plan context, archive reason/time, and provider observation keys at
+the relevant boundary. Migrations 010/011 deterministically reconstruct fields missing from older
+schemas; unavailable historical HYSA remainder, archive provenance without an audit event, and an
+unstored provider key use the compatibility fallbacks documented in
+[ARCHITECTURE.md](ARCHITECTURE.md). Those fallbacks are not exact original-source evidence.
 
 Future provider records must be addable without changing the goal or plan identity:
 
@@ -378,40 +467,102 @@ Future provider records must be addable without changing the goal or plan identi
 
 ## 12. API surface
 
-Public:
+Current health, anonymous-capable, authentication, and session routes:
 
 ```text
-GET  /health
-GET  /ready
+GET  /health/live
+GET  /health/ready
 GET  /api/v1/vehicle-catalog
+POST /api/v1/baselines
 POST /api/v1/previews
+POST /auth/register
+POST /auth/login
+POST /auth/logout
+GET  /api/v1/session-status
+GET  /api/v1/me
+GET  /api/v1/capabilities
 ```
 
-Authenticated:
+Health, catalog, baseline, preview, registration, login, and session-status are anonymous-capable.
+`/api/v1/me` and `/api/v1/capabilities` require authentication; logout requires session CSRF.
+The loopback-only runtime also exposes generated operational documentation at `GET /docs/`,
+`GET /docs/json`, and `GET /docs/yaml`; `GET /docs` redirects to the trailing-slash UI and
+plugin-owned `/docs/static/*` assets are not product API routes.
+
+Current authenticated draft/goal/plan/activity routes:
 
 ```text
-GET    /api/v1/goals
-POST   /api/v1/goals
-GET    /api/v1/goals/:goalId
-PATCH  /api/v1/goals/:goalId
-DELETE /api/v1/goals/:goalId
-POST   /api/v1/goals/:goalId/activate
-POST   /api/v1/goals/:goalId/pause
-POST   /api/v1/goals/:goalId/resume
-POST   /api/v1/goals/:goalId/complete
-GET    /api/v1/goals/:goalId/plan-versions
-GET    /api/v1/goals/:goalId/ledger
-POST   /api/v1/goals/:goalId/contributions
-POST   /api/v1/data-exports
-POST   /api/v1/account-deletion
-GET    /api/v1/me
+GET    /api/v1/goal-drafts
+POST   /api/v1/goal-drafts
+GET    /api/v1/goal-drafts/:draftId
+PATCH  /api/v1/goal-drafts/:draftId
+DELETE /api/v1/goal-drafts/:draftId
+POST   /api/v1/goal-drafts/:draftId/activate
+
+GET   /api/v1/goals
+POST  /api/v1/goals
+GET   /api/v1/goals/:goalId
+PATCH /api/v1/goals/:goalId
+POST  /api/v1/goals/:goalId/activate
+POST  /api/v1/goals/:goalId/pause
+POST  /api/v1/goals/:goalId/resume
+POST  /api/v1/goals/:goalId/complete
+POST  /api/v1/goals/:goalId/archive
+GET   /api/v1/goals/:goalId/ledger
+POST  /api/v1/goals/:goalId/contributions
+
+GET  /api/v1/goals/:goalId/plan/summary
+GET  /api/v1/goals/:goalId/plan/health
+GET  /api/v1/goals/:goalId/plan/history
+POST /api/v1/goals/:goalId/what-if/preview
+POST /api/v1/goals/:goalId/what-if/apply
+GET  /api/v1/goals/:goalId/recovery
+POST /api/v1/goals/:goalId/recovery/apply
+
+POST /api/v1/product-events
+POST /api/v1/data-exports
+POST /api/v1/account-deletion
 ```
 
-Internal scheduled endpoint or Lambda handler:
+The progressive UI uses `goal-drafts`; direct goal create/activate remain compatibility routes.
+There is no current `DELETE /api/v1/goals/:goalId` or
+`GET /api/v1/goals/:goalId/plan-versions` route. Immutable history is at `/plan/history`.
+
+Routes registered only when `DEMO_STORY_ENABLED=true`:
 
 ```text
-processDueSimulationEvents(processingDate)
+POST /api/v1/demo/advance
+POST /api/v1/demo/reset
 ```
+
+Reset is limited to the caller's persisted seeded fixture and requires expected goal version plus
+the exact confirmation literal `RESET_SEEDED_STORY_DEMO`; a non-matching owned fixture lookup is
+404, not a capability 403.
+
+Routes registered only when `PURCHASE_TIMING_LAB_ENABLED=true`:
+
+```text
+GET   /api/v1/timing-lab/purchase-items
+POST  /api/v1/timing-lab/purchase-items
+PATCH /api/v1/timing-lab/purchase-items/:itemId
+POST  /api/v1/timing-lab/purchase-items/:itemId/archive
+GET   /api/v1/timing-lab/purchase-items/:itemId/latest
+POST  /api/v1/timing-lab/purchase-items/:itemId/watch-policies
+POST  /api/v1/timing-lab/run-due-price-checks
+```
+
+`/latest` returns the item, latest policy, latest assessment, and exact stored series; no separate
+policy-list or assessment-history route currently exists. All current background work is invoked
+by a local authenticated route or CLI. A Lambda/EventBridge handler remains future M19+ work.
+
+For each due policy/application date, provider work uses a separate ten-minute generation lease on
+the one logical `price_check_runs` row. A second caller that observes an unexpired generation gets
+`in_progress` without another provider call or routine event. Expiry permits the same row to move
+to its next bounded attempt, up to three total; only the matching current generation token may
+complete or fail it. A completed row replays without provider work. This worker lease is neither
+the HTTP response-persistence claim nor the Story financial-run lease. If a worker loses its token
+before recording a local failure, that watch contributes `in_progress` rather than a failure
+count/code; an all-transient summary emits no outcome event.
 
 ## 13. Frontend design requirements
 
@@ -427,15 +578,18 @@ The visual system uses:
 - clear financial-number hierarchy;
 - subtle motion that respects `prefers-reduced-motion`.
 
-The frontend must use free, maintainable resources:
+The current frontend uses free, maintainable resources:
 
 - Tailwind CSS for tokens and layout;
-- shadcn/ui source-owned components;
-- Radix UI primitives through shadcn/ui;
+- source-owned React components and semantic native controls;
 - Lucide icons;
-- Recharts for charts;
-- Motion for restrained transitions;
+- accessible semantic CSS charts with text/table equivalents;
 - Figma Community references for inspiration only, never copied blindly.
+
+Motion and Recharts are installed approved dependencies but current product states use CSS
+transitions/charts and do not import them. shadcn/Radix source components remain approved options
+when a future interaction requires them; the CLI/primitive packages are not current direct
+dependencies and their presence is not an acceptance claim.
 
 Requirements:
 
@@ -452,53 +606,76 @@ Requirements:
 
 ## 14. Security requirements
 
+The input, SQL, ownership, safe-error, redaction, CORS, header, dependency, and SBOM requirements
+apply to the current local release. API Gateway, SSM, GitHub OIDC deployment, and CloudWatch bullets
+below are future M19–M22 requirements and are not current controls.
+
 - Validate every external input with shared runtime schemas.
-- Parameterize all SQL through Drizzle or explicit prepared statements.
+- Parameterize all SQL; the current repositories use `postgres` tagged templates and reviewed SQL
+  migrations rather than Drizzle.
 - Apply the authenticated subject in every protected database predicate.
 - Use generic error responses for unexpected failures.
 - Redact authorization, cookies, tokens, emails, and financial amounts from routine logs.
 - Use a strict CORS allowlist and security headers.
-- Add API Gateway throttling and application-level per-subject rate limits.
-- Store secrets only in environment injection from SSM Parameter Store or deployment secrets.
+- Future M19–M22: add API Gateway throttling; current local mode uses supplemental in-process rate
+  limits.
+- Future M19–M22: store cloud secrets in SSM Parameter Store or deployment secrets. Current local
+  secrets come from ignored environment configuration.
 - Never commit `.env`, cloud credentials, database credentials, or JWTs.
-- Use GitHub OIDC for AWS deployment; no long-lived AWS keys in GitHub.
+- Future M19–M22: use GitHub OIDC for AWS deployment; no long-lived AWS keys in GitHub.
 - Generate a CycloneDX SBOM in CI.
 - Run CodeQL, Dependabot, dependency review, secret scanning, and production dependency audit.
-- Keep CloudWatch log retention short in development and explicitly configured in production.
+- Future M19–M22: configure CloudWatch log retention explicitly.
 - Maintain a lightweight threat model and data inventory before adding any financial provider.
 
 ## 15. Reliability and performance
 
 MVP objectives:
 
-| Objective                        | Target                                                                                              |
-| -------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Stateless preview p95            | Under 1 second at supported inputs, excluding cold start outliers                                   |
-| Authenticated API p95            | Under 1 second for ordinary CRUD at low traffic                                                     |
-| Determinism                      | Equal normalized input and version produce equal output                                             |
-| Duplicate simulated contribution | Zero                                                                                                |
-| Cross-user data disclosure       | Zero                                                                                                |
-| Availability target              | Best-effort MVP; architecture designed for 99.9% later                                              |
-| Recovery                         | Database provider backups plus exported migrations; documented restore rehearsal before public beta |
+| Objective                        | Target                                                                                  |
+| -------------------------------- | --------------------------------------------------------------------------------------- |
+| Stateless preview p95            | Under 1 second across 20 Fastify injections                                             |
+| Authenticated goal-list GET p95  | Under 1 second across 20 Fastify injections                                             |
+| One local What-If preview        | Under 1 second for the deterministic PostgreSQL fixture                                 |
+| Timing full fixture              | Under 5 seconds for 731 deterministic observations                                      |
+| Six-month local Autopilot        | Under 10 seconds for the owner-scoped Japan fixture                                     |
+| Determinism                      | Equal normalized input and version produce equal output                                 |
+| Duplicate simulated contribution | Zero                                                                                    |
+| Cross-user data disclosure       | Zero                                                                                    |
+| Availability target              | Best-effort MVP; architecture designed for 99.9% later                                  |
+| Recovery                         | Current: exported migrations/data; future hosted-provider backups and restore rehearsal |
 
-The API must be compatible with AWS Lambda but remain ordinary Fastify code so it can move to ECS Fargate later without rewriting domain or route logic.
+These are local regression ceilings, not production SLOs or load/capacity evidence. A configured
+threshold is not a pass; release evidence requires the executed command and measured output.
+
+The ordinary Fastify/application boundaries must remain adaptable to a future Lambda or ECS
+transport, but no Lambda handler or ECS deployment ships in the current release.
 
 ## 16. Analytics and success metrics
 
-Collect privacy-minimized product events:
+Current local storage accepts only these event names:
 
-- landing CTA selected;
-- preview started and completed;
-- goal created;
-- plan activated;
-- simulated contribution created;
-- autopilot enabled or disabled;
-- plan edited;
-- goal became purchase-ready;
-- goal completed;
-- validation or calculation failure category.
+```text
+sample_goal_opened                 builder_started
+builder_step_completed             safe_baseline_viewed
+plan_previewed                     vehicle_details_opened
+simulated_plan_activated           what_if_previewed
+recovery_option_applied            autopilot_advanced
+plan_paused                        plan_resumed
+plan_purchase_ready                plan_completed
+plan_archived                      purchase_timing_viewed
+purchase_timing_check_completed    purchase_timing_check_failed
+purchase_timing_check_replayed     purchase_timing_check_no_due
+```
 
-Do not send goal names, balances, contribution amounts, or notes to third-party analytics in the MVP.
+An observed active Timing worker returns the transient `in_progress` summary and emits no fifth
+event. Terminal success/failure, completed replay, and no-due summaries map to the four closed
+routine outcomes above.
+
+The API stores only a salted pseudonymous subject, closed categorical fields, server-derived demo
+status, application version, and event times/IDs. Do not store or send goal/product names, balances,
+contribution/price amounts, dates entered by the user, notes, email, URLs, resource/session/request
+identifiers, secrets, or arbitrary metadata. No third-party analytics adapter ships.
 
 Success indicators:
 
@@ -512,31 +689,39 @@ Success indicators:
 
 ## 17. Provider-ready interfaces
 
-The application must define ports, even though only simulated adapters ship:
+The current local application defines provider-neutral ports for `Clock`, `AuthProvider`,
+`RateProvider`, `GoalAccountProvider`, `ContributionProvider`, `InterestProvider`, and
+`HistoricalPriceProvider`. Representative current signatures are:
 
 ```ts
 interface RateProvider {
-  getCatalog(asOf: Date): Promise<VehicleCatalog>;
+  getCatalog(asOfDate: string): Promise<readonly VehicleAssumption[]>;
 }
 
 interface GoalAccountProvider {
-  open(input: OpenGoalAccountInput): Promise<GoalAccountReference>;
-  getBalance(accountId: string): Promise<ProviderBalance>;
+  open(input: OpenGoalAccountInput): Promise<{ accountId: string }>;
+  summary(userId: string, goalId: string, asOfDate: string): Promise<AccountSummary | null>;
+  getActivity(userId: string, goalId: string): Promise<readonly Activity[]>;
 }
 
-interface FundingProvider {
-  createRecurringAuthorization(input: AuthorizationInput): Promise<AuthorizationReference>;
-  requestContribution(input: ContributionRequest): Promise<ContributionReference>;
+interface HistoricalPriceProvider {
+  getHistory(input: { fixtureCode: string; asOfDate: string }): Promise<HistoricalPriceDataset>;
 }
 ```
 
-MVP implementations:
+Current implementations:
 
 - `StaticRateProvider`;
-- `SimulationGoalAccountProvider`;
-- `SimulationFundingProvider`.
+- `LocalAuthProvider`;
+- `SimulatedGoalAccountProvider`;
+- `SimulatedContributionProvider`;
+- `SimulatedInterestProvider`;
+- `PersistedApplicationClock` and `PersistedUserApplicationClock`;
+- `FixtureHistoricalPriceProvider`.
 
-Future implementations may include an embedded-finance or sponsor-bank adapter after legal, security, commercial, and provider approval.
+A future `FundingProvider`, embedded-finance/sponsor-bank adapter, or external historical-data
+adapter requires separate legal, security, privacy, commercial, and provider approval. It is not
+present in PX00–PX10.
 
 ## 18. Historical cloud acceptance criteria (future M19–M22)
 
@@ -582,7 +767,8 @@ experience, not when it prematurely reproduces a bank.
 
 ## 20. Current local product-experience requirements
 
-The current phase extends the verified M00–M18 simulator without changing its educational scope.
+The current phase extends the M00–M18 local simulator baseline without changing its educational
+scope.
 Its customer-facing object is a **Simulated Goal Plan**. Activating one must state that no real
 account is opened, no money is moved, all activity is simulated, rates are illustrative, and the
 selected assumption version is fixed for reproducibility.
@@ -612,10 +798,16 @@ The phase must:
 12. Ship production-built local and demo modes plus a terminating local smoke check, without an
     AWS dependency.
 
-The primary deterministic showcase is **Japan trip in 18 months**. Its affordable contribution is
-slightly below the safe baseline, modeled interest is visible but secondary, at least one
-fixed-term model is rejected or subordinated for a clear policy reason, and one missed contribution
-has a bounded recovery. Displayed results must be produced by the real domain engine.
+The primary deterministic showcase is **Japan trip**, using an 18-month horizon. Its affordable
+contribution is slightly below the safe baseline, modeled interest is visible but secondary, at
+least one fixed-term model is rejected or subordinated for a clear policy reason, and one missed
+contribution has a bounded recovery. Displayed results must be produced by the real domain engine.
+
+Current PX persistence also requires `plan-calculation-context-v1`, exact archive provenance,
+per-user clocks, the persisted Japan-fixture capability, fail-closed application command claims,
+the distinct owner financial-run lease/revision boundary, bounded per-run Timing worker
+generations, and the `goalpilot-user-data-export-v2` privacy boundary. `schedule_occurrences` is
+processing history, not a table of projected future dates.
 
 Current acceptance is defined by PX00–PX10 in `docs/TASKS.md` and the hard gate **GoalPilot local
 product experience must pass**. User-validation plans and blank results templates are release

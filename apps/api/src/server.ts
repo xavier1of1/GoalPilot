@@ -14,7 +14,7 @@ const close = async (): Promise<void> => {
 process.on('SIGINT', () => void close());
 process.on('SIGTERM', () => void close());
 
-await app.listen({ port: configuration.API_PORT, host: '0.0.0.0' });
+await app.listen({ port: configuration.API_PORT, host: configuration.API_BIND_HOST });
 app.log.info(
   {
     web: configuration.WEB_ORIGIN,

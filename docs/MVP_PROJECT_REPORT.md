@@ -3,6 +3,11 @@
 **Date:** 2026-08-23  
 **Release boundary:** local development only
 
+> **Historical foundation banner:** the Outcome through Delivery sections below record the audited
+> M18 state on 2026-08-23, including its original 5-migration/67-test/3-journey evidence. They are
+> preserved rather than rewritten. The current PX addendum follows with the pending 2026-08-24
+> frozen-tree release state.
+
 ## Outcome
 
 GoalPilot is implemented as a local-first educational savings simulator. A user can preview a
@@ -59,7 +64,7 @@ AWS, Cognito, managed PostgreSQL, provider contracts, real authentication federa
 movement, compliance approval, and production operations remain M19+ future work behind the local
 release hard gate.
 
-## Product-experience phase
+## Historical product-experience phase plan — 2026-08-23
 
 The M18 checkpoint was independently re-proved and corrected in commit `1dbd3a4`. The new PX00–PX10
 phase is additive and not yet covered by the M18 verification claim. It promotes the zero-interest
@@ -70,3 +75,49 @@ events, and includes a fixture-only Purchase Timing Lab behind a default-off fla
 The exact phase design is in `PRODUCT_EXPERIENCE_SPEC.md`, `PURCHASE_TIMING_LAB.md`, ADR 0003, and
 `TASKS.md`. Its completion label is reserved until PX10 evidence exists. No usability result, local
 release mode, premium feature, or new automated check is claimed merely because it is specified.
+
+## Product-experience release addendum — 2026-08-24
+
+PX00–PX10 is implemented, but the corrected frozen-tree automated hard gate has not yet been
+executed and recorded. The product extends the foundation
+with a progressive builder that reveals the contribution-only baseline before budget fit, a
+server-owned safe plan summary, policy-ordered vehicle fit, explainable plan health, stateless
+What-If comparisons, immutable recovery and plan history, drafts/archive navigation, owner-scoped
+Story-Mode Autopilot, constrained local product events, and a fixture-only Purchase Timing Lab.
+
+Important final policy corrections separate personal principal from modeled interest, compute
+fixed-term availability per maturity lot, keep scenario apply/replay atomic and version-checked,
+store immutable plan calculation context, and reuse one replay-safe due-price-check use case at the
+API and CLI boundaries. Rich privacy integration proves an allowlisted owner export and deletion of
+the complete owned Planning/Timing chain while retained audits are pseudonymized and scrubbed.
+
+### Final release evidence — pending
+
+The repository currently contains 17 migration files through
+`202608230017_price_check_worker_lease.sql`; this is source inventory, not proof that the final tree
+has replayed or upgraded successfully. The following results must be captured against one exact
+frozen checkpoint:
+
+- source and permitted-diff identity: **PENDING**;
+- setup twice, doctor, developer reset/migrate/seed, and current schema verifier: **PENDING**;
+- clean migration replay and independent upgrade through migration 017: **PENDING**;
+- format, lint, typecheck, production build, and canonical verify: **PENDING**;
+- current Vitest counts, coverage metrics, and threshold results: **PENDING**;
+- installed-Chrome Journeys A–E, exact Chrome build, durations, and background request failures:
+  **PENDING**;
+- measured performance results against the documented budgets: **PENDING**;
+- secret scan, production dependency audit, and CycloneDX SBOM: **PENDING**;
+- production-built local/demo smoke, feature-mode probes, and owned-port cleanup: **PENDING**;
+- Dev Container image and non-root runtime probe: **PENDING**. A full editor attach remains
+  `NOT EXECUTED` unless it is actually performed.
+
+The reserved narrow release label is withheld until every required row in
+[LOCAL_PRODUCT_RELEASE.md](LOCAL_PRODUCT_RELEASE.md) is filled with current passing evidence.
+
+### Boundaries after PX10
+
+Human validation remains an **OPEN external gate**; the study plan and blank results template are
+prepared, but no participant outcome is claimed. GoalPilot remains a local educational simulator:
+there is no real account, money movement, live rate/price provider, personalized advice, compliance
+approval, production operation, or public deployment. AWS M19–M22 is not implemented or enabled and
+still requires explicit, separate authorization.

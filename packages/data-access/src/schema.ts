@@ -1,6 +1,7 @@
 export const schemaTables = [
   'users',
   'sessions',
+  'goal_drafts',
   'goals',
   'vehicle_assumption_versions',
   'vehicle_assumptions',
@@ -10,9 +11,18 @@ export const schemaTables = [
   'schedule_occurrences',
   'interest_posting_periods',
   'idempotency_records',
+  'application_command_claims',
   'audit_events',
   'data_requests',
   'application_clock',
+  'user_application_clocks',
+  'demo_fixture_users',
+  'product_events',
+  'purchase_items',
+  'price_watch_policies',
+  'price_check_runs',
+  'price_observations',
+  'purchase_timing_assessments',
 ] as const;
 
 export type SchemaTable = (typeof schemaTables)[number];

@@ -1,29 +1,45 @@
 # GoalPilot execution plan
 
 This is the authoritative local-first milestone order. M00–M18 are the independently audited local
-MVP foundation. PX00–PX10 are a separate pre-AWS product-experience phase. AWS milestones retain
-their identifiers and remain unauthorized until the new hard gate passes.
+MVP foundation. PX00–PX09 and the implementation portion of PX10 are present, but the corrected
+frozen-tree product-experience hard gate is **pending**. AWS milestones retain their identifiers and
+remain unimplemented and unauthorized; even a future local pass would not authorize them.
 
 | Status | Milestone     | Increment                                               |
 | ------ | ------------- | ------------------------------------------------------- |
 | [x]    | M00–M18       | Verified local-first MVP foundation                     |
 | [x]    | MVP HARD GATE | Complete local MVP release audit                        |
 | [x]    | PX00          | Audit checkpoint and documentation reconciliation       |
-| [ ]    | PX01          | Progressive goal builder                                |
-| [ ]    | PX02          | Safe plan summary and deterministic rationale           |
-| [ ]    | PX03          | Vehicle-fit comparison                                  |
-| [ ]    | PX04          | Plan health states                                      |
-| [ ]    | PX05          | What-If and recovery                                    |
-| [ ]    | PX06          | Drafts, plan history, and archived navigation           |
-| [ ]    | PX07          | Story-mode Autopilot and seeded demo                    |
-| [ ]    | PX08          | Privacy-safe local product events                       |
-| [ ]    | PX09          | Purchase Timing Lab                                     |
-| [ ]    | PX10          | Local release, usability package, and independent audit |
-| [ ]    | **HARD GATE** | **GoalPilot local product experience must pass**        |
+| [x]    | PX01          | Progressive goal builder                                |
+| [x]    | PX02          | Safe plan summary and deterministic rationale           |
+| [x]    | PX03          | Vehicle-fit comparison                                  |
+| [x]    | PX04          | Plan health states                                      |
+| [x]    | PX05          | What-If and recovery                                    |
+| [x]    | PX06          | Drafts, plan history, and archived navigation           |
+| [x]    | PX07          | Story-mode Autopilot and seeded demo                    |
+| [x]    | PX08          | Privacy-safe local product events                       |
+| [x]    | PX09          | Purchase Timing Lab                                     |
+| [~]    | PX10          | Release implementation complete; final evidence pending |
+| [ ]    | **HARD GATE** | Reserved product-experience label withheld              |
 | [ ]    | M19           | Future AWS architecture adaptation                      |
 | [ ]    | M20           | Future AWS staging                                      |
 | [ ]    | M21           | Future AWS security and observability                   |
 | [ ]    | M22           | Future cloud release audit                              |
+
+## PX implementation record — final gate pending
+
+PX01–PX09 and the implementation work for PX10 are present in source. The repository now contains 17
+ordered migration files, including the forward-only corrections through migration 017. That source
+inventory is not release evidence: the final working state still needs clean/upgrade migration proof,
+the complete test and coverage gates, installed-Chrome Journeys A–E, production-built local/demo
+smoke, setup/doctor/database checks, security/supply-chain gates, and Dev Container image/runtime
+proof.
+
+The reserved label **GoalPilot Local Product Experience verified** is not currently applied. It may
+be applied only after [LOCAL_PRODUCT_RELEASE.md](LOCAL_PRODUCT_RELEASE.md) identifies the exact tested
+checkpoint and contains the actual final results. Human validation remains an open external gate, and
+even the narrow automated label would not mean production-ready, financially compliant, AWS-ready,
+AWS-deployed, or human-validated.
 
 ## Completed foundation: M00–M18
 
@@ -231,10 +247,14 @@ Evidence is in [implementation status](IMPLEMENTATION_STATUS.md) and the preserv
   Experience verified** is supported. This does not mean production-ready, compliant, or AWS-ready.
 - **Documentation:** all current-release documents and handoff; never fabricate usability results.
 
-## Product-experience hard gate
+## Product-experience hard gate — pending
 
-M19 remains blocked until PX10 proves the hard gate and the user separately authorizes AWS work.
-Source presence, planned tests, or the earlier M18 gate do not satisfy this gate.
+PX10 has not yet proved the corrected frozen-tree automated hard gate. Freeze the source, record its
+exact checkpoint, execute every command in `LOCAL_PRODUCT_RELEASE.md`, and replace only the explicit
+pending fields with observed results. Until then the reserved label is withheld. M19 remains blocked
+because AWS work requires explicit, separate user authorization; the local gate neither implements
+AWS nor grants that authorization. Human validation also remains open and is not implied by an
+automated gate.
 
 ## Evidence map
 
@@ -245,5 +265,6 @@ Source presence, planned tests, or the earlier M18 gate do not satisfy this gate
 - PX01–PX08: product specification, source/tests, and implementation status
 - PX07: [demo runbook](DEMO_RUNBOOK.md)
 - PX09: [Purchase Timing Lab specification](PURCHASE_TIMING_LAB.md)
-- PX10: `LOCAL_PRODUCT_RELEASE.md`, [user-validation plan](USER_VALIDATION_PLAN.md), and unfilled
+- PX10: [local product release evidence](LOCAL_PRODUCT_RELEASE.md),
+  [user-validation plan](USER_VALIDATION_PLAN.md), and unfilled
   [results template](USER_VALIDATION_RESULTS_TEMPLATE.md)

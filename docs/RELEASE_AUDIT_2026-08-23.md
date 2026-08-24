@@ -1,5 +1,12 @@
 # GoalPilot Local MVP Independent Release Audit
 
+> **HISTORICAL AUDIT — DO NOT REWRITE OR USE AS CURRENT PX EVIDENCE.** This entire document,
+> including the 2026-08-24 PX00–PX10 addendum, preserves evidence from earlier source checkpoints.
+> Its migration/test counts, browser timings, PASS results, and release-label disposition are
+> superseded by later corrections and do not prove the current 17-migration tree. The current
+> frozen-tree gate is pending in [LOCAL_PRODUCT_RELEASE.md](LOCAL_PRODUCT_RELEASE.md), and the
+> reserved product-experience label is not currently applied.
+
 **Audit date:** 2026-08-23
 
 **Baseline revision:** `e17753a`
@@ -261,3 +268,87 @@ was performed.
 The final E2E run reset only the exact isolated `goalpilot_test` target and ran its own servers on
 3100/5273. The developer database was migrated/seeded non-destructively; it was not reset because
 that would not have been safe with an existing development session.
+
+## Historical PX00–PX10 release addendum — superseded 2026-08-24 snapshot
+
+> **SUPERSEDED HISTORICAL EVIDENCE:** this addendum extends, but does not alter, the dated M18 audit
+> above. Every result below belongs to an earlier checkpoint. The original finding IDs, severities,
+> reproductions, failed runs, and recorded counts remain historical facts, not current release proof.
+
+### Scope and verdict
+
+The PX audit treated the prior verification claim as untrusted, reviewed the complete local product
+scope, and executed the final repository gates. It did not implement or modify AWS infrastructure
+and did not add live providers, real money movement, or a production claim.
+
+All actionable Critical, High, and Medium local-scope findings discovered in the combined M18/PX
+review were corrected and covered by regression evidence. The automated product-experience hard
+gate passed. The supported narrow label is **GoalPilot Local Product Experience verified**.
+
+This verdict explicitly excludes production readiness, financial compliance, AWS readiness or
+deployment, and human validation. Human validation remains an **OPEN external gate**.
+
+### Current correction disposition
+
+The PX correction pass added or completed regression-backed protections for:
+
+- contribution-only safe amounts and separate principal/modeled-interest/account-availability
+  reporting;
+- fixed-term per-lot maturity, readiness, activation, and Autopilot behavior;
+- atomic What-If/recovery apply, replay, optimistic version checks, and immutable plan provenance;
+- fail-closed command claims, scenario/timing exact replay keys, and closed routine outcome events;
+- authenticated owner-scoped clocks/reset, 404 resource-ownership denial, and distinct 403
+  capability denial;
+- session, CSRF, Origin, rate, validation, safe-error, and content-free logging behavior;
+- append-only ledger/product events and immutable catalog, plan, price, and assessment records;
+- rich allowlisted privacy export/deletion, including Timing Lab records and pseudonymized retained
+  audit evidence;
+- browser failure/loading/empty states, reset-dialog focus trap/Escape/restoration, reduced motion,
+  text alternatives, Axe, and required-width overflow checks;
+- deterministic fixture provider boundaries, no-network Timing processing, local release modes,
+  terminating smoke, and Windows-clean E2E process shutdown.
+
+These corrections are exercised across domain golden vectors, API/repository integration tests,
+database negative tests, React component tests, release-script regressions, and Chrome Journeys A–E.
+
+### Commands actually executed from the final PX state
+
+| Gate                                         | Final result                                                                                                                       |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `corepack pnpm run setup` twice              | PASS; repeatable frozen setup, local PostgreSQL, migrations, seed, diagnostics                                                     |
+| `corepack pnpm run doctor`                   | PASS; Node 24.19.0, pnpm 11.22.0, database, and Docker access                                                                      |
+| explicit developer reset/migrate/seed/verify | PASS; safe reset syntax `corepack pnpm db:reset -- --yes`                                                                          |
+| clean test replay                            | PASS; exact isolated `goalpilot_test`, all 12 migrations, deterministic seed                                                       |
+| independent migration upgrade                | PASS; migration 005 through migration 012                                                                                          |
+| database verifier                            | PASS; 12 immutable migrations, 25 public tables, 131 columns, 161 constraints, 19 triggers, 17 functions, 9 indexes, 4 assumptions |
+| `corepack pnpm test:coverage`                | PASS; 34 files / 217 tests; every configured coverage floor passed                                                                 |
+| format, lint, typecheck, production build    | PASS                                                                                                                               |
+| installed-Chrome `test:e2e`                  | PASS; Journeys A–E, 5/5, durations 9.9/13.3/40.3/10.2/6.2 seconds                                                                  |
+| product commands                             | PASS; fixture reset, aggregate event summary, and replay-safe price check                                                          |
+| local/demo production-built smoke            | PASS; price assessment/mode checks; processes stopped and ports closed                                                             |
+| repository secret/security scan              | PASS                                                                                                                               |
+| production dependency audit                  | PASS after approved registry access; no known vulnerabilities                                                                      |
+| CycloneDX SBOM                               | PASS; `artifacts/sbom.cdx.json`                                                                                                    |
+| Dev Container image/runtime                  | PASS; non-root Node 24.19.0/pnpm 11.22.0 workspace proof                                                                           |
+| full VS Code Dev Container attach            | NOT EXECUTED; not claimed                                                                                                          |
+
+Coverage details were API 85.11% statements / 88.85% lines / 100% functions; data access 87.31%
+statements / 91.25% lines / 97.38% functions; and domain 95.30% statements / 92.47% branches /
+97.03% lines / 100% functions.
+
+Recorded local performance samples passed their regression budgets: What-If preview 89.4 ms,
+731-observation Timing assessment 335.9 ms, and owner-scoped six-month Autopilot 2,816.4 ms.
+
+### Final limitations
+
+- The installed Chrome channel was recorded, but its exact build number was not retained in the
+  supplied final output.
+- Automated Axe, keyboard, responsive, and reduced-motion checks do not replace participant or
+  assistive-technology validation.
+- The Dev Container image and non-root runtime were proved; a complete editor attach was not run.
+- AWS M19–M22 remains not implemented, disabled, and unauthorized.
+- No live rate/price feed, provider credential, real money movement, financial advice, compliance
+  approval, public listener, or production operation exists.
+
+The exact final release identity, command record, and decision are maintained in
+[LOCAL_PRODUCT_RELEASE.md](LOCAL_PRODUCT_RELEASE.md).

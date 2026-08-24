@@ -25,13 +25,14 @@ guaranteed. `expected` remains the only internal confidence value and is not exp
 
 ### Vehicle fit
 
-All four models remain visible and cash remains the baseline. Eligible models are ordered by:
+All four models remain visible and cash remains the baseline. Models are evaluated and ordered by:
 
-1. purchase readiness by the target using the safe contribution;
-2. satisfaction of declared access needs;
-3. lower liquidity and lockup conflict;
-4. higher modeled cushion;
-5. vehicle code.
+1. eligibility under every access, maturity, preservation, and policy rule;
+2. purchase readiness by the target using the safe contribution;
+3. satisfaction of declared access needs;
+4. lower liquidity and lockup conflict;
+5. higher modeled cushion;
+6. vehicle code.
 
 Ineligible models receive no rank. Return cannot override eligibility, access, or maturity.
 

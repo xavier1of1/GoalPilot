@@ -5,22 +5,36 @@
     "context": ".."
   },
   "workspaceFolder": "/workspaces/GoalPilot",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/GoalPilot,type=bind,consistency=cached",
   "remoteUser": "node",
   "mounts": [
-    "source=${localWorkspaceFolder},target=/workspaces/GoalPilot,type=bind,consistency=cached"
+    "source=goalpilot-${devcontainerId}-root-node-modules,target=/workspaces/GoalPilot/node_modules,type=volume",
+    "source=goalpilot-${devcontainerId}-api-node-modules,target=/workspaces/GoalPilot/apps/api/node_modules,type=volume",
+    "source=goalpilot-${devcontainerId}-web-node-modules,target=/workspaces/GoalPilot/apps/web/node_modules,type=volume",
+    "source=goalpilot-${devcontainerId}-auth-node-modules,target=/workspaces/GoalPilot/packages/auth/node_modules,type=volume",
+    "source=goalpilot-${devcontainerId}-contracts-node-modules,target=/workspaces/GoalPilot/packages/contracts/node_modules,type=volume",
+    "source=goalpilot-${devcontainerId}-data-access-node-modules,target=/workspaces/GoalPilot/packages/data-access/node_modules,type=volume",
+    "source=goalpilot-${devcontainerId}-domain-node-modules,target=/workspaces/GoalPilot/packages/domain/node_modules,type=volume",
+    "source=goalpilot-${devcontainerId}-observability-node-modules,target=/workspaces/GoalPilot/packages/observability/node_modules,type=volume",
+    "source=goalpilot-${devcontainerId}-provider-ports-node-modules,target=/workspaces/GoalPilot/packages/provider-ports/node_modules,type=volume",
+    "source=goalpilot-${devcontainerId}-provider-simulators-node-modules,target=/workspaces/GoalPilot/packages/provider-simulators/node_modules,type=volume",
+    "source=goalpilot-${devcontainerId}-test-support-node-modules,target=/workspaces/GoalPilot/packages/test-support/node_modules,type=volume",
+    "source=goalpilot-${devcontainerId}-ui-node-modules,target=/workspaces/GoalPilot/packages/ui/node_modules,type=volume",
+    "source=goalpilot-${devcontainerId}-pnpm-store,target=/home/node/.local/share/pnpm/store,type=volume"
   ],
   "features": {
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
   },
-  "postCreateCommand": "corepack enable && pnpm install --frozen-lockfile",
+  "postCreateCommand": "sudo chown -R node:node /workspaces/GoalPilot/node_modules /workspaces/GoalPilot/apps/api/node_modules /workspaces/GoalPilot/apps/web/node_modules /workspaces/GoalPilot/packages/auth/node_modules /workspaces/GoalPilot/packages/contracts/node_modules /workspaces/GoalPilot/packages/data-access/node_modules /workspaces/GoalPilot/packages/domain/node_modules /workspaces/GoalPilot/packages/observability/node_modules /workspaces/GoalPilot/packages/provider-ports/node_modules /workspaces/GoalPilot/packages/provider-simulators/node_modules /workspaces/GoalPilot/packages/test-support/node_modules /workspaces/GoalPilot/packages/ui/node_modules /home/node/.local/share/pnpm/store && corepack pnpm install --frozen-lockfile",
   "containerEnv": {
     "GOALPILOT_DEVCONTAINER": "true"
   },
-  "forwardPorts": [3000, 5173, 5432],
+  "forwardPorts": [3000, 3200, 5173, 5373],
   "portsAttributes": {
     "3000": { "label": "GoalPilot API" },
+    "3200": { "label": "GoalPilot Release API" },
     "5173": { "label": "GoalPilot Web" },
-    "5432": { "label": "GoalPilot PostgreSQL" }
+    "5373": { "label": "GoalPilot Release Web" }
   },
   "customizations": {
     "vscode": {

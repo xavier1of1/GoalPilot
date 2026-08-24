@@ -61,16 +61,7 @@ describe('authenticated goal API integration', () => {
 
   afterAll(async () => {
     if (goalId.length > 0) {
-      const cleanup = await app.inject({
-        method: 'DELETE',
-        url: `/api/v1/goals/${goalId}`,
-        headers: {
-          origin: configuration.WEB_ORIGIN,
-          cookie: alex.cookie,
-          'x-csrf-token': alex.csrf,
-        },
-      });
-      expect(cleanup.statusCode).toBe(204);
+      await database`DELETE FROM goals WHERE id = ${goalId}`;
     }
     await app.close();
     await database.end();
@@ -113,18 +104,29 @@ describe('authenticated goal API integration', () => {
     });
     expect(changedReplay.statusCode).toBe(409);
 
-    const edit = await app.inject({
+    const editRequest = {
       method: 'PATCH',
       url: `/api/v1/goals/${goalId}`,
       headers: {
         origin: configuration.WEB_ORIGIN,
         cookie: alex.cookie,
         'x-csrf-token': alex.csrf,
+        'idempotency-key': `integration-edit-${runKey}`,
       },
       payload: { version: 1, name: 'Edited API integration trip' },
-    });
+    } as const;
+    const edit = await app.inject(editRequest);
     expect(edit.statusCode, edit.body).toBe(200);
     expect(edit.json()).toMatchObject({ name: 'Edited API integration trip', version: 2 });
+    const editReplay = await app.inject(editRequest);
+    expect(editReplay.statusCode, editReplay.body).toBe(200);
+    expect(editReplay.headers['idempotency-replayed']).toBe('true');
+    expect(editReplay.json()).toEqual(edit.json());
+    const changedEditReplay = await app.inject({
+      ...editRequest,
+      payload: { version: 1, name: 'Changed replay' },
+    });
+    expect(changedEditReplay.statusCode).toBe(409);
 
     const crossUser = await app.inject({
       method: 'GET',
@@ -139,6 +141,7 @@ describe('authenticated goal API integration', () => {
         origin: configuration.WEB_ORIGIN,
         cookie: sam.cookie,
         'x-csrf-token': sam.csrf,
+        'idempotency-key': `integration-cross-edit-${runKey}`,
       },
       payload: { version: 2, name: 'Cross-user edit' },
     });
@@ -151,6 +154,7 @@ describe('authenticated goal API integration', () => {
         cookie: sam.cookie,
         'x-csrf-token': sam.csrf,
       },
+      payload: {},
     });
     expect(crossUserDelete.statusCode).toBe(404);
     const crossUserActivity = await app.inject({
@@ -178,11 +182,12 @@ describe('authenticated goal API integration', () => {
         origin: configuration.WEB_ORIGIN,
         cookie: sam.cookie,
         'x-csrf-token': sam.csrf,
+        'idempotency-key': `integration-cross-activation-${runKey}`,
       },
-      payload: { vehicleCode: 'hysa' },
+      payload: { vehicleCode: 'hysa', expectedGoalVersion: 2 },
     });
     expect(crossUserActivation.statusCode).toBe(404);
-    for (const action of ['pause', 'resume', 'complete', 'archive'] as const) {
+    for (const action of ['pause', 'resume', 'complete'] as const) {
       const crossUserStateChange = await app.inject({
         method: 'POST',
         url: `/api/v1/goals/${goalId}/${action}`,
@@ -190,27 +195,44 @@ describe('authenticated goal API integration', () => {
           origin: configuration.WEB_ORIGIN,
           cookie: sam.cookie,
           'x-csrf-token': sam.csrf,
+          'idempotency-key': `integration-cross-${action}-${runKey}`,
         },
+        payload: { expectedGoalVersion: 3 },
       });
       expect(crossUserStateChange.statusCode).toBe(404);
     }
+    const crossUserArchive = await app.inject({
+      method: 'POST',
+      url: `/api/v1/goals/${goalId}/archive`,
+      headers: {
+        origin: configuration.WEB_ORIGIN,
+        cookie: sam.cookie,
+        'x-csrf-token': sam.csrf,
+        'idempotency-key': `integration-cross-user-archive-${runKey}`,
+      },
+      payload: { expectedGoalVersion: 1, reasonCode: 'USER_REQUESTED' },
+    });
+    expect(crossUserArchive.statusCode).toBe(404);
 
-    const activate = await app.inject({
+    const activationRequest = {
       method: 'POST',
       url: `/api/v1/goals/${goalId}/activate`,
       headers: {
         origin: configuration.WEB_ORIGIN,
         cookie: alex.cookie,
         'x-csrf-token': alex.csrf,
+        'idempotency-key': `integration-activation-${runKey}`,
       },
-      payload: { vehicleCode: 'hysa' },
-    });
+      payload: { vehicleCode: 'hysa', expectedGoalVersion: 2 },
+    } as const;
+    const activate = await app.inject(activationRequest);
     expect(activate.statusCode, activate.body).toBe(201);
     expect(
       activate.json<{
         account: {
           goalId: string;
           principalContributedCents: number;
+          principalCompositionBasisPoints: number;
           currentLedgerBalanceCents: number;
         };
       }>().account,
@@ -220,17 +242,15 @@ describe('authenticated goal API integration', () => {
       currentLedgerBalanceCents: 100_000,
     });
 
-    const repeatedActivation = await app.inject({
-      method: 'POST',
-      url: `/api/v1/goals/${goalId}/activate`,
-      headers: {
-        origin: configuration.WEB_ORIGIN,
-        cookie: alex.cookie,
-        'x-csrf-token': alex.csrf,
-      },
-      payload: { vehicleCode: 'hysa' },
+    const repeatedActivation = await app.inject(activationRequest);
+    expect(repeatedActivation.statusCode, repeatedActivation.body).toBe(201);
+    expect(repeatedActivation.headers['idempotency-replayed']).toBe('true');
+    expect(repeatedActivation.json()).toEqual(activate.json());
+    const changedActivation = await app.inject({
+      ...activationRequest,
+      payload: { vehicleCode: 'cash', expectedGoalVersion: 2 },
     });
-    expect(repeatedActivation.statusCode, repeatedActivation.body).toBe(409);
+    expect(changedActivation.statusCode).toBe(409);
 
     const unsafeActiveEdit = await app.inject({
       method: 'PATCH',
@@ -239,6 +259,7 @@ describe('authenticated goal API integration', () => {
         origin: configuration.WEB_ORIGIN,
         cookie: alex.cookie,
         'x-csrf-token': alex.csrf,
+        'idempotency-key': `integration-unsafe-edit-${runKey}`,
       },
       payload: { version: 3, currentSavedCents: 200_000 },
     });
@@ -291,9 +312,37 @@ describe('authenticated goal API integration', () => {
         origin: configuration.WEB_ORIGIN,
         cookie: alex.cookie,
         'x-csrf-token': alex.csrf,
+        'idempotency-key': `integration-pause-${runKey}`,
       },
+      payload: { expectedGoalVersion: 3 },
     });
     expect(pause.statusCode).toBe(200);
+    const pauseReplay = await app.inject({
+      method: 'POST',
+      url: `/api/v1/goals/${goalId}/pause`,
+      headers: {
+        origin: configuration.WEB_ORIGIN,
+        cookie: alex.cookie,
+        'x-csrf-token': alex.csrf,
+        'idempotency-key': `integration-pause-${runKey}`,
+      },
+      payload: { expectedGoalVersion: 3 },
+    });
+    expect(pauseReplay.statusCode, pauseReplay.body).toBe(200);
+    expect(pauseReplay.headers['idempotency-replayed']).toBe('true');
+    expect(pauseReplay.json()).toEqual(pause.json());
+    const changedPauseReplay = await app.inject({
+      method: 'POST',
+      url: `/api/v1/goals/${goalId}/pause`,
+      headers: {
+        origin: configuration.WEB_ORIGIN,
+        cookie: alex.cookie,
+        'x-csrf-token': alex.csrf,
+        'idempotency-key': `integration-pause-${runKey}`,
+      },
+      payload: { expectedGoalVersion: 4 },
+    });
+    expect(changedPauseReplay.statusCode).toBe(409);
     const pausedContribution = await app.inject({
       method: 'POST',
       url: `/api/v1/goals/${goalId}/contributions`,
@@ -313,7 +362,9 @@ describe('authenticated goal API integration', () => {
         origin: configuration.WEB_ORIGIN,
         cookie: alex.cookie,
         'x-csrf-token': alex.csrf,
+        'idempotency-key': `integration-resume-${runKey}`,
       },
+      payload: { expectedGoalVersion: 4 },
     });
     expect(resume.statusCode).toBe(200);
 
@@ -365,6 +416,7 @@ describe('authenticated goal API integration', () => {
     ).toMatchObject({
       status: 'purchase_ready',
       principalContributedCents: 600_000,
+      principalCompositionBasisPoints: 10_000,
       currentLedgerBalanceCents: 600_000,
       projectedCompletionDate: '2027-07-23',
     });
@@ -386,10 +438,13 @@ describe('authenticated goal API integration', () => {
         origin: configuration.WEB_ORIGIN,
         cookie: alex.cookie,
         'x-csrf-token': alex.csrf,
+        'idempotency-key': `integration-complete-${runKey}`,
       },
+      payload: { expectedGoalVersion: 6 },
     });
     expect(complete.statusCode).toBe(200);
-    expect(complete.json<{ goal: { status: string } }>().goal).toMatchObject({
+    const completedGoal = complete.json<{ goal: { status: string; version: number } }>().goal;
+    expect(completedGoal).toMatchObject({
       status: 'completed',
     });
 
@@ -427,6 +482,22 @@ describe('authenticated goal API integration', () => {
         expect.objectContaining({ type: 'simulated_withdrawal', principalCents: -600_000 }),
       ]),
     );
+    for (const endpoint of ['plan/summary', 'plan/health'] as const) {
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/v1/goals/${goalId}/${endpoint}`,
+        headers: { cookie: alex.cookie },
+      });
+      expect(response.statusCode, response.body).toBe(200);
+    }
+    const completedRecovery = await app.inject({
+      method: 'GET',
+      url: `/api/v1/goals/${goalId}/recovery`,
+      headers: { cookie: alex.cookie },
+    });
+    expect(completedRecovery.statusCode, completedRecovery.body).toBe(200);
+    expect(completedRecovery.json()).toMatchObject({ options: [] });
+
     const archive = await app.inject({
       method: 'POST',
       url: `/api/v1/goals/${goalId}/archive`,
@@ -434,10 +505,43 @@ describe('authenticated goal API integration', () => {
         origin: configuration.WEB_ORIGIN,
         cookie: alex.cookie,
         'x-csrf-token': alex.csrf,
+        'idempotency-key': `integration-archive-${runKey}`,
       },
+      payload: { expectedGoalVersion: completedGoal.version, reasonCode: 'GOAL_COMPLETED' },
     });
     expect(archive.statusCode, archive.body).toBe(200);
-    expect(archive.json()).toMatchObject({ goal: { status: 'archived' } });
+    const archivedGoal = archive.json<{ goal: { status: string; version: number } }>().goal;
+    expect(archivedGoal).toMatchObject({ status: 'archived' });
+    const archivedSummary = await app.inject({
+      method: 'GET',
+      url: `/api/v1/goals/${goalId}/plan/summary`,
+      headers: { cookie: alex.cookie },
+    });
+    expect(archivedSummary.statusCode, archivedSummary.body).toBe(200);
+    const archivedPlanVersion = archivedSummary.json<{ planVersion: number }>().planVersion;
+    for (const endpoint of ['plan/health', 'recovery'] as const) {
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/v1/goals/${goalId}/${endpoint}`,
+        headers: { cookie: alex.cookie },
+      });
+      expect(response.statusCode, response.body).toBe(200);
+    }
+    const archivedPreview = await app.inject({
+      method: 'POST',
+      url: `/api/v1/goals/${goalId}/what-if/preview`,
+      headers: {
+        origin: configuration.WEB_ORIGIN,
+        cookie: alex.cookie,
+        'x-csrf-token': alex.csrf,
+      },
+      payload: {
+        expectedGoalVersion: archivedGoal.version,
+        expectedPlanVersion: archivedPlanVersion,
+        change: { changedDimension: 'CONTRIBUTION', recurringContributionCents: 25_000 },
+      },
+    });
+    expect(archivedPreview.statusCode, archivedPreview.body).toBe(409);
   });
 
   it('rejects mutations without a CSRF token', async () => {
@@ -462,7 +566,12 @@ describe('authenticated goal API integration', () => {
       durations.push(performance.now() - startedAt);
     }
     durations.sort((left, right) => left - right);
-    expect(durations[Math.ceil(durations.length * 0.95) - 1]).toBeLessThan(1_000);
+    const p95DurationMs =
+      durations[Math.ceil(durations.length * 0.95) - 1] ?? Number.POSITIVE_INFINITY;
+    process.stdout.write(
+      `[performance] authenticated-goals-get-p95=${p95DurationMs.toFixed(1)}ms samples=${String(durations.length)} ceiling=1000ms\n`,
+    );
+    expect(p95DurationMs).toBeLessThan(1_000);
   });
 
   it('uses the injected clock while retaining the activated assumption snapshot', async () => {
@@ -481,6 +590,7 @@ describe('authenticated goal API integration', () => {
       cookie: cookiesFrom(registration),
       csrf: registration.json<{ csrfToken: string }>().csrfToken,
     };
+    const clockUserId = registration.json<{ user: { id: string } }>().user.id;
 
     try {
       const created = await app.inject({
@@ -513,8 +623,9 @@ describe('authenticated goal API integration', () => {
           origin: configuration.WEB_ORIGIN,
           cookie: session.cookie,
           'x-csrf-token': session.csrf,
+          'idempotency-key': `clock-activation-${runKey}`,
         },
-        payload: { vehicleCode: 'hysa' },
+        payload: { vehicleCode: 'hysa', expectedGoalVersion: 1 },
       });
       expect(activated.statusCode, activated.body).toBe(201);
       const activatedAccount = activated.json<{
@@ -527,6 +638,10 @@ describe('authenticated goal API integration', () => {
         apyBasisPoints: assumption.vehicleCode === 'hysa' ? 10_000 : assumption.apyBasisPoints,
       }));
       await clock.advanceTo('2027-08-24');
+      await database`
+        UPDATE user_application_clocks SET application_date = '2027-08-24', version = version + 1
+        WHERE user_id = ${clockUserId}
+      `;
       const detail = await app.inject({
         method: 'GET',
         url: `/api/v1/goals/${clockGoalId}`,
@@ -549,7 +664,9 @@ describe('authenticated goal API integration', () => {
           origin: configuration.WEB_ORIGIN,
           cookie: session.cookie,
           'x-csrf-token': session.csrf,
+          'idempotency-key': `clock-pause-${runKey}`,
         },
+        payload: { expectedGoalVersion: 2 },
       });
       expect(paused.statusCode, paused.body).toBe(200);
       const activity = await app.inject({
@@ -572,6 +689,7 @@ describe('authenticated goal API integration', () => {
           cookie: session.cookie,
           'x-csrf-token': session.csrf,
         },
+        payload: {},
       });
       expect(deletion.statusCode, deletion.body).toBe(200);
     }
@@ -625,6 +743,7 @@ describe('authenticated goal API integration', () => {
         cookie: sam.cookie,
         'x-csrf-token': sam.csrf,
       },
+      payload: {},
     });
     expect(logout.statusCode).toBe(204);
     const samStatus = await app.inject({
@@ -671,7 +790,9 @@ describe('authenticated goal API integration', () => {
         origin: configuration.WEB_ORIGIN,
         cookie: session.cookie,
         'x-csrf-token': session.csrf,
+        'idempotency-key': `privacy-export-${runKey}`,
       },
+      payload: {},
     });
     expect(exportResponse.statusCode, exportResponse.body).toBe(201);
     expect(exportResponse.json()).toMatchObject({
@@ -679,6 +800,20 @@ describe('authenticated goal API integration', () => {
       data: { user: { id: userId, displayName: 'Privacy Test' }, goals: [] },
     });
     expect(exportResponse.body).not.toContain('password_hash');
+    const exportReplay = await app.inject({
+      method: 'POST',
+      url: '/api/v1/data-exports',
+      headers: {
+        origin: configuration.WEB_ORIGIN,
+        cookie: session.cookie,
+        'x-csrf-token': session.csrf,
+        'idempotency-key': `privacy-export-${runKey}`,
+      },
+      payload: {},
+    });
+    expect(exportReplay.statusCode, exportReplay.body).toBe(201);
+    expect(exportReplay.headers['idempotency-replayed']).toBe('true');
+    expect(exportReplay.json()).toEqual(exportResponse.json());
     const legacyExport = await app.inject({
       method: 'GET',
       url: '/api/v1/data-export',
@@ -698,6 +833,7 @@ describe('authenticated goal API integration', () => {
         cookie: session.cookie,
         'x-csrf-token': session.csrf,
       },
+      payload: {},
     });
     expect(deletion.statusCode, deletion.body).toBe(200);
     expect(deletion.json()).toEqual({ status: 'completed' });

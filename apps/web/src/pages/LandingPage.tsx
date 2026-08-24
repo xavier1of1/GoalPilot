@@ -1,9 +1,32 @@
 import { ArrowRight, BadgeCheck, CalendarClock, LineChart, ShieldCheck } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 
-import { Disclosure } from '../components/Disclosure.js';
+import type { UserDto } from '@goalpilot/contracts';
 
-export function LandingPage(): React.JSX.Element {
+import { api, trackProductEvent } from '../api.js';
+import { Disclosure } from '../components/Disclosure.js';
+import { RetryableQueryError } from '../components/RetryableQueryError.js';
+
+export function LandingPage({
+  user = null,
+}: {
+  readonly user?: UserDto | null;
+}): React.JSX.Element {
+  const capabilities = useQuery({
+    queryKey: ['capabilities'],
+    queryFn: api.capabilities,
+    enabled: user !== null,
+    retry: false,
+  });
+  const openSample = (): void => {
+    if (user === null || capabilities.isPending || capabilities.error !== null) return;
+    trackProductEvent({
+      eventName: 'sample_goal_opened',
+      demo: capabilities.data.demoStory,
+      applicationVersion: 'product-experience-v1',
+    });
+  };
   return (
     <>
       <section className="hero">
@@ -15,13 +38,21 @@ export function LandingPage(): React.JSX.Element {
             set-and-forget plan—without connecting a bank.
           </p>
           <div className="hero-actions">
-            <Link className="button" to="/plan">
-              Build my plan <ArrowRight aria-hidden="true" size={18} />
+            <Link className="button" to="/plan" onClick={openSample}>
+              Open sample plan <ArrowRight aria-hidden="true" size={18} />
             </Link>
             <a className="secondary-link" href="#how-it-works">
               See how it works
             </a>
           </div>
+          {user !== null && capabilities.error !== null && (
+            <RetryableQueryError
+              error={capabilities.error}
+              label="Local feature availability"
+              description="The sample still opens, but GoalPilot cannot identify which local demo features are enabled."
+              onRetry={() => capabilities.refetch()}
+            />
+          )}
           <div className="trust-row" aria-label="Product safeguards">
             <span>
               <ShieldCheck aria-hidden="true" /> Local and private
@@ -33,29 +64,29 @@ export function LandingPage(): React.JSX.Element {
         </div>
         <div className="hero-card" aria-label="Example goal progress">
           <div className="hero-card-top">
-            <span>Japan in spring</span>
-            <span className="status-pill">On track</span>
+            <span>Japan trip</span>
+            <span className="status-pill">Starting point</span>
           </div>
-          <p className="hero-number">$4,240</p>
-          <p className="muted">of $6,000 saved in this example</p>
+          <p className="hero-number">$1,500</p>
+          <p className="muted">of $9,000 saved in this example</p>
           <div
             className="progress-track"
             role="progressbar"
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-valuenow={71}
-            aria-label="Example progress: 71 percent"
+            aria-valuenow={16.67}
+            aria-label="Example progress: 16.67 percent"
           >
-            <span style={{ width: '71%' }} />
+            <span style={{ width: '16.67%' }} />
           </div>
           <dl className="metric-grid">
             <div>
               <dt>Next step</dt>
-              <dd>$440 monthly</dd>
+              <dd>$400.50 monthly</dd>
             </div>
             <div>
               <dt>Modeled interest</dt>
-              <dd>$84</dd>
+              <dd>$0 at the starting point</dd>
             </div>
           </dl>
           <p className="microcopy">Example only · Illustrative rate, not a live offer.</p>

@@ -47,53 +47,86 @@ function requireTool(command: string, versionArguments: readonly string[]): void
     throw new Error(`Missing required tool: ${command}`);
 }
 
-requireTool('node', ['--version']);
-requireTool('corepack', ['--version']);
-requireTool('docker', ['--version']);
-run('docker', ['info'], { quiet: true });
-run('corepack', ['enable']);
-run('corepack', ['pnpm', 'install', '--frozen-lockfile']);
+const REQUIRED_NODE_VERSION = 'v24.19.0';
+const REQUIRED_PNPM_VERSION = '11.22.0';
 
-if (!existsSync('.env.local')) {
-  copyFileSync('.env.example', '.env.local');
-  process.stdout.write('Created .env.local from development-only template.\n');
+export function assertExactRuntimeVersions(nodeVersion: string, pnpmVersion: string): void {
+  if (nodeVersion !== REQUIRED_NODE_VERSION) {
+    throw new Error(
+      `GoalPilot setup requires Node ${REQUIRED_NODE_VERSION.slice(1)} exactly; running ${nodeVersion}.`,
+    );
+  }
+  if (pnpmVersion !== REQUIRED_PNPM_VERSION) {
+    throw new Error(
+      `GoalPilot setup requires pnpm ${REQUIRED_PNPM_VERSION} exactly; Corepack resolved ${pnpmVersion}.`,
+    );
+  }
 }
-process.loadEnvFile('.env.local');
 
-run('docker', ['compose', '-f', 'docker-compose.local.yml', 'up', '-d', 'postgres']);
-let ready = false;
-for (let attempt = 1; attempt <= 30; attempt += 1) {
-  ready = run(
-    'docker',
-    [
-      'compose',
-      '-f',
-      'docker-compose.local.yml',
-      'exec',
-      '-T',
-      'postgres',
-      'pg_isready',
-      '-U',
-      'goalpilot_local',
-      '-d',
-      'goalpilot_local',
-    ],
-    { quiet: true, allowFailure: true },
+function readToolVersion(command: string, arguments_: readonly string[]): string {
+  const resolved = invocation(command, arguments_);
+  const result = spawnSync(resolved.executable, resolved.arguments, {
+    cwd: process.cwd(),
+    env: process.env,
+    encoding: 'utf8',
+    shell: false,
+  });
+  if (result.status !== 0) {
+    const detail =
+      result.error?.message ?? (result.stderr.trim() || `exit code ${String(result.status)}`);
+    throw new Error(`Could not resolve ${command} ${arguments_.join(' ')}: ${detail}`);
+  }
+  return result.stdout.trim();
+}
+
+const pnpmVersion = readToolVersion('corepack', ['pnpm', '--version']);
+assertExactRuntimeVersions(process.version, pnpmVersion);
+
+function runSetup(): void {
+  requireTool('docker', ['--version']);
+  run('docker', ['info'], { quiet: true });
+  run('corepack', ['pnpm', 'install', '--frozen-lockfile']);
+
+  if (!existsSync('.env.local')) {
+    copyFileSync('.env.example', '.env.local');
+    process.stdout.write('Created .env.local from development-only template.\n');
+  }
+  process.loadEnvFile('.env.local');
+
+  run('docker', ['compose', '-f', 'docker-compose.local.yml', 'up', '-d', 'postgres']);
+  let ready = false;
+  for (let attempt = 1; attempt <= 30; attempt += 1) {
+    ready = run(
+      'docker',
+      [
+        'compose',
+        '-f',
+        'docker-compose.local.yml',
+        'exec',
+        '-T',
+        'postgres',
+        'pg_isready',
+        '-U',
+        'goalpilot_local',
+        '-d',
+        'goalpilot_local',
+      ],
+      { quiet: true, allowFailure: true },
+    );
+    if (ready) break;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1_000);
+  }
+  if (!ready) throw new Error('PostgreSQL did not become ready within 30 seconds.');
+
+  run('corepack', ['pnpm', 'db:migrate']);
+  run('corepack', ['pnpm', 'db:seed']);
+  run('corepack', ['pnpm', 'run', 'doctor']);
+
+  const databaseUrl = new URL(
+    process.env['DATABASE_URL'] ??
+      'postgres://goalpilot_local:goalpilot_local_only@localhost:5432/goalpilot_local',
   );
-  if (ready) break;
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1_000);
-}
-if (!ready) throw new Error('PostgreSQL did not become ready within 30 seconds.');
-
-run('corepack', ['pnpm', 'db:migrate']);
-run('corepack', ['pnpm', 'db:seed']);
-run('corepack', ['pnpm', 'run', 'doctor']);
-
-const databaseUrl = new URL(
-  process.env['DATABASE_URL'] ??
-    'postgres://goalpilot_local:goalpilot_local_only@localhost:5432/goalpilot_local',
-);
-process.stdout.write(`
+  process.stdout.write(`
 GoalPilot local environment is ready.
 Web:               ${process.env['WEB_ORIGIN'] ?? 'http://localhost:5173'}
 API:               ${process.env['API_ORIGIN'] ?? 'http://localhost:3000'}
@@ -104,5 +137,14 @@ Authentication:    LocalAuthProvider
 Financial mode:    simulated illustrative assumptions
 AWS:               disabled
 
-Next command: pnpm dev
+Next command: corepack pnpm dev
 `);
+}
+
+if (process.argv.includes('--preflight-only')) {
+  process.stdout.write(
+    `GoalPilot setup preflight passed: Node ${process.version.slice(1)}, pnpm ${pnpmVersion}.\n`,
+  );
+} else {
+  runSetup();
+}

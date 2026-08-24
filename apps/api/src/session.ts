@@ -15,6 +15,23 @@ export function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
+function canonicalJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJsonValue);
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, nested]) => [key, canonicalJsonValue(nested)]),
+    );
+  }
+  return value;
+}
+
+export function canonicalRequestHash(value: unknown): string {
+  if (value === undefined) throw new TypeError('The request must be JSON serializable.');
+  return sha256(JSON.stringify(canonicalJsonValue(value)));
+}
+
 export async function issueSession(
   repository: GoalPilotRepository,
   configuration: AppConfiguration,

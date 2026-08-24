@@ -1,7 +1,9 @@
 # GoalPilot local demo runbook
 
-**Status:** target PX07/PX10 operating procedure; commands marked “release gate” must be executed and
-recorded before this becomes verified evidence.
+**Status — 2026-08-24:** the PX07/PX10 implementation is present, but the corrected frozen-tree
+automated release procedure is **pending**. Final command evidence belongs in
+[LOCAL_PRODUCT_RELEASE.md](LOCAL_PRODUCT_RELEASE.md). Human validation remains open; this runbook is
+not a claim that any participant session occurred.
 
 ## Safety boundary
 
@@ -23,8 +25,8 @@ corepack pnpm <command>
 3. Run:
 
 ```bash
-corepack pnpm setup
-corepack pnpm doctor
+corepack pnpm run setup
+corepack pnpm run doctor
 corepack pnpm demo:reset
 corepack pnpm demo:local
 ```
@@ -34,10 +36,14 @@ a non-loopback database, a non-demo mode, or an unmarked user and must preserve 
 records. `demo:local` must use production-built artifacts where practical and display persistent
 simulation/demo disclosures.
 
-## Primary story: Japan trip in 18 months
+The release target binds its production-built API/web previews to loopback ports 3200/5373 by
+default. Stop it with the owning terminal when the guided story is complete. For a self-terminating
+pre-session proof, use `corepack pnpm local:smoke` instead.
+
+## Primary story: Japan trip (18-month horizon)
 
 1. Sign in with the documented synthetic demo credential.
-2. Open **Japan trip in 18 months**.
+2. Open **Japan trip**.
 3. Explain the safe contribution first: it reaches the target from planned personal savings without
    relying on modeled interest.
 4. Show that the initial affordable amount is slightly lower and produces a visible shortfall.
@@ -117,9 +123,15 @@ Before a formal demo or user session, the recorded release must show passing res
 
 ```bash
 corepack pnpm verify
-corepack pnpm test:e2e
+PLAYWRIGHT_CHANNEL=chrome corepack pnpm test:e2e
 corepack pnpm local:smoke
 ```
 
 Also record which browser/channel, release mode, feature flags, seed version, application version,
 and commit were actually used. Never describe an unexecuted command or human session as passed.
+
+The corrected frozen tree has not yet completed this release-gate record. Before a formal demo,
+`LOCAL_PRODUCT_RELEASE.md` must contain the exact source checkpoint and current results for the
+canonical verify gate, installed-Chrome Journeys A–E, production-built demo smoke and local-mode
+probe, setup/doctor, and the Dev Container image/non-root runtime probe. Earlier results are
+historical only and do not replace either this revalidation or the still-open human-validation study.

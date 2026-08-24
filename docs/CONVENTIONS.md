@@ -1,7 +1,7 @@
 # GoalPilot Coding Conventions
 
-**Status:** Mandatory for humans and Codex  
-**Version:** 1.0  
+**Status:** Mandatory for humans and Codex<br>
+**Version:** 1.0<br>
 **Baseline date:** 2026-08-23
 
 These rules are part of the implementation contract. A pull request is incomplete when it violates this document, even if the code appears to work.
@@ -10,7 +10,8 @@ These rules are part of the implementation contract. A pull request is incomplet
 
 Before editing code, Codex must:
 
-1. Read `PRD.md`, `STACK.md`, `CONVENTIONS.md`, and the active section of `TASKS.md`.
+1. Read `docs/PRD.md`, `docs/STACK.md`, `docs/CONVENTIONS.md`, and the active section of
+   `docs/TASKS.md`.
 2. Inspect the repository, current branch, existing tests, and current diff.
 3. Confirm the task's prerequisites are complete.
 4. Identify the smallest vertical slice that satisfies the active task.
@@ -67,9 +68,13 @@ apps/api
   → packages/auth
   → packages/data-access
   → packages/provider-ports
+  → packages/provider-simulators
   → packages/contracts
   → packages/domain
   → packages/observability
+
+packages/domain
+  → packages/contracts
 
 packages/provider-simulators
   → packages/provider-ports
@@ -80,7 +85,7 @@ packages/data-access
   → packages/contracts
   → packages/domain
 
-infra/cdk
+future M19–M22 infra/cdk (not present in the current repository)
   → no application package except build artifact entry points
 ```
 
@@ -132,7 +137,8 @@ infra/cdk
 | stable error codes          | SCREAMING_SNAKE_CASE          | `GOAL_NOT_FOUND`              |
 | database tables and columns | snake_case                    | `vehicle_assumption_versions` |
 | route parameters            | camelCase                     | `goalId`                      |
-| event names                 | past tense dot notation       | `goal.plan_activated`         |
+| security audit event names  | past-tense dot notation       | `goal.plan_activated`         |
+| product event names         | closed snake_case enum        | `plan_archived`               |
 
 Avoid vague names such as `data`, `item`, `thing`, `manager`, `helper`, `utils`, `common`, or `misc` unless the scope makes the meaning unambiguous.
 
@@ -208,6 +214,7 @@ type GoalStatus = 'draft' | 'active' | 'paused' | 'purchase_ready' | 'completed'
 - Normalize strings, dates, money, and enums once at the boundary.
 - Domain functions receive validated normalized types, not raw HTTP values.
 - OpenAPI must be generated from or tested against the same route schemas.
+- Every data-bearing 2xx operation declares a strict response schema; 204 remains bodyless.
 - Schema changes require API tests and, where applicable, migration notes.
 
 ## 8. Backend layering
@@ -257,14 +264,30 @@ Application services coordinate a use case and transaction. They enforce authori
 ## 9. Database conventions
 
 - All schema changes use committed SQL migrations.
+- An applied migration file is immutable. Add a later lexical migration; the runner rejects a
+  checksum change to an applied filename.
 - Never use schema push in shared or deployed environments.
 - Migrations are forward-safe and reviewed.
 - Destructive migrations require an expand, migrate, contract sequence.
 - Foreign keys and check constraints enforce important invariants.
 - Use unique constraints for idempotency and schedule occurrence IDs.
+- `schedule_occurrences` records processed due dates only. Store the schedule anchor and next due
+  date on plan/account state; do not pre-populate projected future occurrences.
 - Use transactions for multi-record state changes.
 - Keep transaction callbacks short and free of network calls.
 - Never call AWS, OAuth, or another provider inside a database transaction.
+- Story advance claims one per-user clock-row lease with a ULID token and ten-minute expiry.
+  Existing-goal update, draft/legacy activation, lifecycle/archive, manual contribution,
+  scenario/recovery apply, and seeded reset reject an active lease; expired claims may be replaced,
+  only the current token may release, and ownership loss fails closed. Do not claim this guard for
+  draft CRUD, stateless previews, Timing work, or privacy deletion.
+- Interest processing sums/counts ledger rows only through its processing date and compares that
+  revision plus locked accrual, goal, and plan state before posting. On conflict, reload and
+  recalculate from the same date under a bounded three-conflict policy.
+- A per-user application clock behind persisted account/ledger dates exposes the greatest pending
+  financial date to the Story loop for idempotent crash recovery. Never fold future-effective rows
+  into an earlier balance, plan, activity, or interest result.
+- Serialize reversal-source validation by locking the owned simulated account.
 - Use indexes based on actual query patterns.
 - `created_at` and `updated_at` are UTC timestamps.
 - Append-only tables do not expose update methods.
@@ -272,16 +295,25 @@ Application services coordinate a use case and transaction. They enforce authori
 
 ## 10. Authentication, authorization, and sessions
 
-- Cognito authenticates identity. GoalPilot authorizes every operation.
-- The API derives the Cognito subject from a verified server-side session.
-- Never accept `userId`, `ownerId`, or Cognito subject from a write body.
-- Session cookies are `HttpOnly`, `Secure`, `SameSite=Lax`, and use the narrowest possible path and domain.
+- Current local PX uses `LocalAuthProvider`; GoalPilot authenticates with a salted scrypt password
+  hash and authorizes every operation from an opaque hashed server-side session. Cognito/OAuth is
+  future M19–M22 only.
+- Never accept `userId`, `ownerId`, or a future external identity subject from a write body.
+- The local session cookie is `HttpOnly` and `SameSite=Lax`; the CSRF cookie is intentionally
+  browser-readable and `SameSite=Lax`. Both use path `/`. `Secure=false` is allowed only for the
+  loopback-HTTP local/test process, which rejects staging/production. A future HTTPS adapter must
+  use `Secure=true`.
 - Session identifiers are cryptographically random and stored only as hashes.
-- OAuth state, nonce, and PKCE transactions are single-use and expire quickly.
-- Refresh-token material is encrypted at rest and never logged.
+- Future OAuth state, nonce, and PKCE transactions are single-use and expire quickly.
+- Future refresh-token material is encrypted at rest and never logged.
 - State-changing browser requests require CSRF validation and Origin checking.
 - Authorization failure for a resource identifier returns 404 unless the endpoint is explicitly administrative.
 - Administrative authorization is denied by default.
+
+Missing/foreign resources and feature-flagged routes that are not registered return
+indistinguishable 404s. Use 403 only for a non-resource policy denial, including CSRF/Origin failure
+or demo advance by an authenticated user without the persisted seeded-fixture capability. A reset
+that does not match the caller's owned marked fixture remains 404.
 
 ## 11. Error handling
 
@@ -339,7 +371,18 @@ Rules:
 - Hash the normalized request.
 - Replay the stored successful response for the same key and request hash.
 - Return 409 when the same key is reused with a different request.
+- The browser retains one key for the same mutation payload through a transport or ambiguous
+  failure, creates a new key when the payload changes, and clears the retained key only after
+  success. Story advance scopes retained keys by selected milestone; reset scopes one to its
+  confirmation payload.
 - Use a unique database constraint, not an in-memory check.
+- Application work that cannot atomically persist its response first uses
+  `application_command_claims`. A possibly committed/indeterminate claim fails closed; only a caller
+  that proves no work committed may explicitly mark it retryable. Completion moves the response to
+  `idempotency_records` and removes the claim.
+- Do not conflate an `application_command_claims` response-persistence claim with either the
+  ten-minute owner financial-run lease stored on `user_application_clocks` or the bounded
+  provider-work generation lease stored on a `price_check_runs` row.
 - Scheduled simulation events use deterministic occurrence IDs.
 - Never delete idempotency records before their documented expiration.
 
@@ -381,19 +424,23 @@ All redaction is tested. `console.log` is prohibited in application code.
 
 ## 14. API conventions
 
-- Base path is `/api/v1`.
+- Product-resource routes use `/api/v1`; `/health/*` and `/auth/*` are intentional unversioned
+  operational/identity exceptions.
 - Resource paths use plural nouns.
 - Actions use explicit subresources only when normal CRUD is insufficient.
 - JSON uses camelCase.
 - HTTP status codes are intentional and tested.
 - Create returns 201 plus canonical representation.
 - Delete or archive returns 204 when no body is needed.
-- Async work returns 202 with a status URL.
-- Pagination uses cursor-based pagination.
+- Long-running asynchronous work returns 202 with a status URL. The current product-event route is
+  an immediate validated telemetry acknowledgement and returns only `{ accepted: true }`.
+- Add cursor-based pagination when a collection is no longer bounded for the local release; current
+  owner-scoped list routes are unpaginated.
 - Dates are ISO strings.
 - Responses are DTOs, not persistence objects.
 - Health and readiness endpoints expose no secrets or dependency credentials.
-- Swagger UI is development-only unless protected.
+- Swagger UI is available only in the current loopback-only local/test process; any future hosted
+  environment must disable or protect it.
 
 ## 15. React conventions
 
@@ -424,6 +471,8 @@ All redaction is tested. `console.log` is prohibited in application code.
 - Mutations invalidate or update the narrowest correct cache.
 - Abort requests on navigation where appropriate.
 - Display loading, error, empty, stale, and success states.
+- Never translate a failed capability, account, health, activity, or collection query into a
+  disabled, not-activated, or empty state. Keep the error retryable.
 - Never hide an API error only in the browser console.
 
 ### Forms
@@ -474,8 +523,8 @@ All redaction is tested. `console.log` is prohibited in application code.
 4. Fastify injection tests for API behavior.
 5. React behavior tests for components.
 6. Playwright tests for critical journeys.
-7. CDK assertions and synthesis tests.
-8. Deployed smoke tests.
+7. Production-built loopback local/demo smoke tests.
+8. Future M19–M22 only: CDK assertions/synthesis and deployed smoke tests.
 
 ### Rules
 
@@ -492,24 +541,37 @@ All redaction is tested. `console.log` is prohibited in application code.
 
 ### Minimum quality expectations
 
-- Domain package: at least 90 percent meaningful line and branch coverage, plus every documented invariant.
-- API and data packages: at least 85 percent meaningful coverage.
+The current numeric configuration is exact:
+
+- Domain: lines, branches, functions, and statements each at least 90 percent, plus every
+  documented invariant.
+- API: lines and statements at least 85 percent and functions at least 90 percent; no branch floor
+  is currently configured.
+- Data access: lines and statements at least 85 percent and functions at least 90 percent; no
+  branch floor is currently configured.
+- Explicit exclusions are `**/*.test.{ts,tsx}`, `apps/api/src/server.ts`, and
+  `packages/data-access/src/schema.ts`. Do not add an exclusion or lower a floor merely to pass.
 - Every protected resource: positive and cross-user negative test.
 - Every state transition: valid and invalid transition test.
 - Every critical web journey: Playwright coverage.
 - Every financial number displayed in a critical flow: API-to-UI consistency assertion.
+- Current Playwright release scope is Journeys A–E as defined in `TESTING.md`; it includes stable
+  Chrome, ownership/capability semantics, telemetry shape, Axe, responsive overflow, reduced
+  motion, and reset-dialog keyboard/focus behavior in the states explicitly named there.
 
 ## 19. Security conventions
 
 - Threat model all new trust boundaries.
-- Apply least privilege to IAM.
-- Use GitHub OIDC, never static AWS keys.
-- Use SSM parameters or deployment secret stores, never committed configuration.
+- Future M19–M22: apply least privilege to IAM.
+- Future M19–M22: use GitHub OIDC, never static AWS keys.
+- Future M19–M22: use SSM parameters or deployment secret stores, never committed configuration.
 - Validate environment variables at startup and fail closed.
 - Use a fixed CORS allowlist.
 - Add CSP and other security headers.
-- API Gateway throttling is authoritative; in-process rate limiting is supplemental.
-- Do not trust headers from the internet unless API Gateway or CloudFront overwrites them.
+- Current local mode uses in-process rate limiting. Future M19–M22 API Gateway throttling becomes
+  authoritative.
+- Do not trust internet headers; future API Gateway/CloudFront must overwrite any header used as a
+  security boundary.
 - Protect against IDOR, injection, XSS, CSRF, open redirects, SSRF, unsafe deserialization, and resource exhaustion.
 - There are no arbitrary URL-fetch features in the MVP.
 - No user-uploaded files in the MVP.
@@ -523,7 +585,8 @@ All redaction is tested. `console.log` is prohibited in application code.
 - No direct `process.env` reads outside the configuration module.
 - Separate local, test, staging, and production configuration.
 - Never default to insecure production behavior.
-- `AUTH_MODE=development` is rejected when `ENVIRONMENT` is not local or test.
+- `AUTH_MODE=local` is the only shipped adapter. `AUTH_MODE=external` is rejected, and the current
+  application refuses staging/production startup entirely.
 - Every external resource name includes project and environment.
 - Feature flags default off.
 
@@ -603,17 +666,44 @@ An implementation that merely works on the author's machine is not done.
   the base snapshot and creates immutable history.
 - Recovery is limited to contribution, deadline, and target; no vehicle/risk/debt escalation.
 - Partial drafts do not weaken complete financial aggregates. They are owner-scoped, strict,
-  optimistic-versioned, and atomically promoted.
+  optimistic-versioned, and atomically promoted. Promotion stores a schedule anchor/next date; it
+  does not create projected future `schedule_occurrences`.
 - Consumer controlled-clock operations are authenticated, per-user, milestone-only, and seeded
-  reset is capability-based. Never infer reset authority from email or UI state.
+  reset is capability-based. Never infer reset authority from email or UI state. HTTP reset
+  requires `RESET_SEEDED_STORY_DEMO` and the expected goal version.
+- Story advance owns one bounded clock-row financial-run lease. Current-token release, active-run
+  mutation denial, processing-date financial revisions, bounded interest reload, and pending-date
+  crash recovery are required; the browser must present a concurrent run as a retryable conflict.
 - Feature flags default off, are reported by the server, and are enforced in the API. Hidden UI is
   not an authorization control.
 - Product telemetry uses one schema per allowlisted event and fixed categorical columns. No money,
   entered text, URL, email, resource/session/request/CSRF identifiers, secrets, or free metadata.
+  Timing routine outcomes are limited to `purchase_timing_check_completed`,
+  `purchase_timing_check_failed`, `purchase_timing_check_replayed`, and
+  `purchase_timing_check_no_due`. Observing another unexpired Timing worker returns `in_progress`
+  and emits no outcome event.
+- Timing provider work owns one ten-minute generation token on the unique policy/application-date
+  run. Active work is not duplicated; expired work advances the same row by one attempt, no more
+  than three attempts are permitted, and only the matching current generation may complete or
+  fail. Terminal rows clear the worker token and expiry. A superseded worker reports
+  `in_progress`, not a failure; an all-transient summary emits no outcome event.
 - Historical price observations and assessments are immutable and versioned. Timing language is
-  descriptive and non-predictive; readiness always gates favorable-price copy.
+  descriptive and non-predictive; readiness always gates favorable-price copy. Retained Timing
+  UI shows assessment-time lifecycle/target and marks the assessment stale when the current item
+  target differs.
+- Completed and archived workspaces keep decision, history, activity, and Timing reads while
+  removing What-If, recovery, advance, contribution, pause, resume, and completion controls. A
+  completed goal may retain only the explicit archive action; an archived goal has no mutation
+  controls.
+- Privacy export uses the closed `goalpilot-user-data-export-v2` owner-filtered shape. Never add
+  password/session/CSRF material, command/idempotency internals (including Timing worker
+  token/expiry fields), audits, or product events to it. Every nested export record remains strict.
+  Account deletion cascades owned product rows and scrubs/pseudonymizes retained audits.
 - Product UI tests cover first use, loading, empty, validation, dependency/network failure, stale
   response, conflict, disabled capability, and relevant domain states, including focus recovery.
 - Release docs distinguish specification, executed automated evidence, and real human-validation
   evidence. Never turn a fixture, event count, plan, or blank results template into a validation
   claim.
+- Performance source thresholds are regression ceilings, not evidence. Record the exact successful
+  command and measured result, retain prior failures when relevant, and do not translate a local
+  ceiling into a production SLO.

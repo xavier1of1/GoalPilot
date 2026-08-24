@@ -52,8 +52,8 @@ export function AuthPage(): React.JSX.Element {
         <p className="eyebrow">Your plan, kept local</p>
         <h1>Welcome back to a clearer savings path.</h1>
         <p>
-          Local sessions still exercise real ownership and security boundaries. Two synthetic users
-          are included so tenant isolation can be tested without an external identity provider.
+          Local sessions still exercise real ownership and security boundaries. Separate synthetic
+          profiles are included for ownership testing and the explicitly enabled Story Demo.
         </p>
         <div className="security-note">
           <LockKeyhole aria-hidden="true" />
@@ -122,6 +122,27 @@ export function AuthPage(): React.JSX.Element {
         >
           {registering ? 'Already have a profile? Sign in' : 'Need a profile? Create one'}
         </button>
+        {!registering && (
+          <div className="security-note story-demo-entry">
+            <div>
+              <strong>Local Story Demo fixture</strong>
+              <p>
+                Historical Japan-trip simulation only. Available when Story Demo mode is enabled; no
+                money moves.
+              </p>
+            </div>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => {
+                form.setValue('email', 'demo.japan@example.test');
+                form.setValue('password', 'GoalPilot-Demo-2026!');
+              }}
+            >
+              Use Japan Story Demo
+            </button>
+          </div>
+        )}
       </div>
     </section>
   );

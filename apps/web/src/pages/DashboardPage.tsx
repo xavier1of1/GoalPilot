@@ -14,14 +14,24 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 
-import { api, ApiClientError } from '../api.js';
+import { api, ApiClientError, trackProductEvent } from '../api.js';
 import { Disclosure } from '../components/Disclosure.js';
+import { PlanWorkspace } from '../components/PlanWorkspace.js';
+import { RetryableQueryError } from '../components/RetryableQueryError.js';
 import { dollarsToCents, formatDate, formatMoney, formatRate } from '../format.js';
+import { LogicalMutationKey } from '../idempotency.js';
+import {
+  accountStatusCopy,
+  activityTypeCopy,
+  goalStatusCopy,
+  vehicleCopy,
+} from '../productCopy.js';
 
 export function DashboardPage(): React.JSX.Element {
   const [search, setSearch] = useSearchParams();
   const queryClient = useQueryClient();
   const goalsQuery = useQuery({ queryKey: ['goals'], queryFn: api.goals });
+  const draftsQuery = useQuery({ queryKey: ['goal-drafts'], queryFn: api.drafts, retry: false });
   const selectedGoal =
     goalsQuery.data?.goals.find((goal) => goal.id === search.get('goal')) ??
     goalsQuery.data?.goals.find((goal) =>
@@ -36,7 +46,7 @@ export function DashboardPage(): React.JSX.Element {
   const activityQuery = useQuery({
     queryKey: ['activity', selectedGoal?.id],
     queryFn: () => api.activity(selectedGoal?.id ?? ''),
-    enabled: selectedGoal !== undefined && detailQuery.data?.account !== null,
+    enabled: selectedGoal !== undefined && detailQuery.data?.account != null,
   });
   const [amount, setAmount] = useState('100');
   const [effectiveDate, setEffectiveDate] = useState('2026-08-23');
@@ -47,6 +57,11 @@ export function DashboardPage(): React.JSX.Element {
   const amountRef = useRef<HTMLInputElement>(null);
   const contributionOperationErrorRef = useRef<HTMLParagraphElement>(null);
   const contributionKeyRef = useRef<string | null>(null);
+  const lifecycleKeyRef = useRef(new LogicalMutationKey());
+  const previousAccountStatusRef = useRef<{
+    readonly goalId: string;
+    readonly status: string;
+  } | null>(null);
   useEffect(() => {
     if (detailQuery.data?.applicationDate !== undefined)
       setEffectiveDate(detailQuery.data.applicationDate);
@@ -54,17 +69,84 @@ export function DashboardPage(): React.JSX.Element {
   useEffect(() => {
     contributionKeyRef.current = null;
   }, [amount, effectiveDate, selectedGoal?.id]);
+  useEffect(() => {
+    const nextStatus = detailQuery.data?.account?.status;
+    const goalId = detailQuery.data?.goal.id;
+    if (nextStatus === undefined || goalId === undefined) return;
+    const previous = previousAccountStatusRef.current;
+    if (
+      previous?.goalId === goalId &&
+      previous.status !== 'purchase_ready' &&
+      nextStatus === 'purchase_ready'
+    ) {
+      const capabilities = queryClient.getQueryData<Awaited<ReturnType<typeof api.capabilities>>>([
+        'capabilities',
+      ]);
+      trackProductEvent({
+        eventName: 'plan_purchase_ready',
+        demo: capabilities?.demoStory ?? false,
+        applicationVersion: 'product-experience-v1',
+      });
+    }
+    previousAccountStatusRef.current = { goalId, status: nextStatus };
+  }, [detailQuery.data?.account?.status, queryClient]);
   const refresh = async (): Promise<void> => {
-    await queryClient.invalidateQueries({ queryKey: ['goals'] });
-    await queryClient.invalidateQueries({ queryKey: ['goal', selectedGoal?.id] });
-    await queryClient.invalidateQueries({ queryKey: ['activity', selectedGoal?.id] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['goals'] }),
+      queryClient.invalidateQueries({ queryKey: ['goal', selectedGoal?.id] }),
+      queryClient.invalidateQueries({ queryKey: ['activity', selectedGoal?.id] }),
+      queryClient.invalidateQueries({ queryKey: ['plan-summary', selectedGoal?.id] }),
+      queryClient.invalidateQueries({ queryKey: ['plan-health', selectedGoal?.id] }),
+      queryClient.invalidateQueries({ queryKey: ['recovery-options', selectedGoal?.id] }),
+      queryClient.invalidateQueries({ queryKey: ['plan-history', selectedGoal?.id] }),
+      queryClient.invalidateQueries({ queryKey: ['timing-lab', selectedGoal?.id] }),
+    ]);
   };
   const actionMutation = useMutation({
     mutationFn: async (action: 'pause' | 'resume' | 'complete' | 'archive') => {
-      if (selectedGoal === undefined) throw new Error('No goal selected.');
-      return api.action(selectedGoal.id, action);
+      const currentGoal = detailQuery.data?.goal;
+      if (selectedGoal === undefined || currentGoal?.id !== selectedGoal.id)
+        throw new Error('The selected goal is not loaded.');
+      if (action === 'archive') {
+        const input = {
+          expectedGoalVersion: currentGoal.version,
+          reasonCode: 'GOAL_COMPLETED' as const,
+        };
+        return api.archiveGoal(
+          currentGoal.id,
+          input,
+          lifecycleKeyRef.current.keyFor({ goalId: currentGoal.id, action, ...input }),
+        );
+      }
+      return api.action(
+        currentGoal.id,
+        action,
+        currentGoal.version,
+        lifecycleKeyRef.current.keyFor({
+          goalId: currentGoal.id,
+          action,
+          expectedGoalVersion: currentGoal.version,
+        }),
+      );
     },
     onSuccess: async (_, action) => {
+      lifecycleKeyRef.current.clear();
+      const capabilities = queryClient.getQueryData<Awaited<ReturnType<typeof api.capabilities>>>([
+        'capabilities',
+      ]);
+      const eventName =
+        action === 'pause'
+          ? ('plan_paused' as const)
+          : action === 'resume'
+            ? ('plan_resumed' as const)
+            : action === 'complete'
+              ? ('plan_completed' as const)
+              : ('plan_archived' as const);
+      trackProductEvent({
+        eventName,
+        demo: capabilities?.demoStory ?? false,
+        applicationVersion: 'product-experience-v1',
+      });
       setActionMessage(
         action === 'pause'
           ? 'Recurring simulation paused.'
@@ -105,20 +187,54 @@ export function DashboardPage(): React.JSX.Element {
       requestAnimationFrame(() => contributionOperationErrorRef.current?.focus());
     },
   });
-  const error = [
-    goalsQuery.error,
-    detailQuery.error,
-    activityQuery.error,
-    actionMutation.error,
-  ].find((value): value is Error => value instanceof Error);
-
-  if (goalsQuery.isPending) return <DashboardSkeleton />;
-  if (goalsQuery.data?.goals.length === 0) return <EmptyDashboard />;
+  if (goalsQuery.isPending || draftsQuery.isPending) return <DashboardSkeleton />;
+  if (goalsQuery.error !== null)
+    return (
+      <DashboardQueryFailure
+        error={goalsQuery.error}
+        label="Plan library"
+        description="GoalPilot could not determine which plans exist. Retry before treating the dashboard as empty."
+        onRetry={() => goalsQuery.refetch()}
+      />
+    );
+  if (draftsQuery.error !== null)
+    return (
+      <DashboardQueryFailure
+        error={draftsQuery.error}
+        label="Saved drafts"
+        description="GoalPilot could not load resumable drafts, so the plan library is incomplete."
+        onRetry={() => draftsQuery.refetch()}
+      />
+    );
+  const goals = goalsQuery.data.goals;
+  const drafts = draftsQuery.data.drafts;
+  if (goals.length === 0) return <EmptyDashboard draftCount={drafts.length} />;
   if (detailQuery.isPending) return <DashboardSkeleton />;
+  if (detailQuery.error !== null)
+    return (
+      <DashboardQueryFailure
+        error={detailQuery.error}
+        label="Plan details"
+        description="The selected plan’s activation and account state are unknown. Retry before taking plan actions."
+        onRetry={() => detailQuery.refetch()}
+      />
+    );
   const detail = detailQuery.data;
-  const account = detail?.account;
-  const lifetimeFundingCents =
-    (account?.principalContributedCents ?? 0) + (account?.interestEarnedCents ?? 0);
+  const account = detail.account;
+  const goalGroups = [
+    {
+      label: 'Active plans',
+      goals: goals.filter((goal) => ['active', 'paused', 'purchase_ready'].includes(goal.status)),
+    },
+    {
+      label: 'Completed plans',
+      goals: goals.filter((goal) => goal.status === 'completed'),
+    },
+    {
+      label: 'Archived plans',
+      goals: goals.filter((goal) => goal.status === 'archived'),
+    },
+  ] as const;
 
   return (
     <section className="dashboard-shell">
@@ -143,37 +259,56 @@ export function DashboardPage(): React.JSX.Element {
         )}
       </div>
 
-      {(goalsQuery.data?.goals.length ?? 0) > 1 && (
+      <nav className="plan-library" aria-label="Plan library">
+        <div>
+          <strong>Your plan library</strong>
+          <span>
+            {goalGroups[0].goals.length} active · {goalGroups[1].goals.length} completed ·{' '}
+            {goalGroups[2].goals.length} archived
+          </span>
+        </div>
         <label className="goal-selector">
           View goal
           <select
             value={selectedGoal?.id}
             onChange={(event) => setSearch({ goal: event.target.value })}
           >
-            {goalsQuery.data?.goals.map((goal) => (
-              <option key={goal.id} value={goal.id}>
-                {goal.name} · {goal.status.replaceAll('_', ' ')}
-              </option>
-            ))}
+            {goalGroups.map(
+              (group) =>
+                group.goals.length > 0 && (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.goals.map((goal) => (
+                      <option key={goal.id} value={goal.id}>
+                        {goal.name} · {goalStatusCopy[goal.status]}
+                      </option>
+                    ))}
+                  </optgroup>
+                ),
+            )}
           </select>
         </label>
-      )}
+        <Link className="secondary-button" to="/plan">
+          {drafts.length > 0
+            ? `Resume saved drafts (${String(drafts.length)})`
+            : 'Start a new plan'}
+        </Link>
+      </nav>
 
       {actionMessage !== null && (
         <div className="alert alert-success" role="status">
           <CheckCircle2 aria-hidden="true" /> {actionMessage}
         </div>
       )}
-      {error !== undefined && (
+      {actionMutation.error instanceof Error && (
         <div className="alert alert-error" role="alert">
-          <strong>We couldn’t refresh this plan.</strong> {error.message}{' '}
-          {error instanceof ApiClientError && (
-            <span className="request-id">Reference {error.requestId}</span>
+          <strong>We couldn’t update this plan.</strong> {actionMutation.error.message}{' '}
+          {actionMutation.error instanceof ApiClientError && (
+            <span className="request-id">Reference {actionMutation.error.requestId}</span>
           )}
         </div>
       )}
 
-      {account === null || account === undefined ? (
+      {account === null ? (
         <article className="empty-state">
           <Target aria-hidden="true" />
           <h2>This goal has not been activated yet.</h2>
@@ -192,15 +327,10 @@ export function DashboardPage(): React.JSX.Element {
                   <p className="dashboard-balance">
                     {formatMoney(account.currentLedgerBalanceCents)}
                   </p>
-                  <p className="muted">
-                    of{' '}
-                    {formatMoney(
-                      detail?.goal.targetAmountCents ?? selectedGoal?.targetAmountCents ?? 0,
-                    )}
-                  </p>
+                  <p className="muted">of {formatMoney(detail.goal.targetAmountCents)}</p>
                 </div>
                 <span className={`status-pill ${account.status}`}>
-                  {account.status.replace('_', ' ')}
+                  {accountStatusCopy[account.status]}
                 </span>
               </div>
               <div
@@ -239,7 +369,7 @@ export function DashboardPage(): React.JSX.Element {
                 <TrendingUp aria-hidden="true" />
               </div>
               <p className="eyebrow">Selected route</p>
-              <h2>{account.vehicleCode.replaceAll('_', ' ')}</h2>
+              <h2>{vehicleCopy[account.vehicleCode]}</h2>
               <p className="rate">{formatRate(account.currentIllustrativeApyBasisPoints)}</p>
               <p className="microcopy">Illustrative rate, not a live offer.</p>
               {account.assumptionIsStale && (
@@ -278,18 +408,24 @@ export function DashboardPage(): React.JSX.Element {
                 <span
                   className="composition-principal"
                   style={{
-                    width: `${String(lifetimeFundingCents === 0 ? 0 : (account.principalContributedCents / lifetimeFundingCents) * 100)}%`,
+                    width: `${(account.principalCompositionBasisPoints / 100).toFixed(2)}%`,
                   }}
                 />
                 <span className="composition-interest" />
               </div>
               <p className="sr-only">
-                Lifetime funding is {formatMoney(lifetimeFundingCents)}:{' '}
+                Current funding is {formatMoney(account.currentLedgerBalanceCents)}:{' '}
                 {formatMoney(account.principalContributedCents)} principal and{' '}
                 {formatMoney(account.interestEarnedCents)} modeled interest.
               </p>
             </div>
           </article>
+
+          <PlanWorkspace
+            goal={detail.goal}
+            account={account}
+            applicationDate={detail.applicationDate}
+          />
 
           <article className="activity-card">
             <div className="card-heading-row">
@@ -301,10 +437,21 @@ export function DashboardPage(): React.JSX.Element {
             </div>
             {activityQuery.isPending ? (
               <p className="muted">Loading account activity…</p>
-            ) : activityQuery.data?.activity.length === 0 ? (
+            ) : activityQuery.error !== null ? (
+              <RetryableQueryError
+                error={activityQuery.error}
+                label="Account activity"
+                description="The balance and plan remain available, but GoalPilot could not verify the append-only activity history. Retry before treating it as empty."
+                onRetry={() => activityQuery.refetch()}
+              />
+            ) : activityQuery.data.activity.length === 0 ? (
               <p className="muted">Activity will appear after activation or a contribution.</p>
             ) : (
-              <div className="activity-table-wrap">
+              <div
+                className="activity-table-wrap"
+                tabIndex={0}
+                aria-label="Scrollable simulated account activity"
+              >
                 <table>
                   <caption className="sr-only">Simulated account activity</caption>
                   <thead>
@@ -316,11 +463,11 @@ export function DashboardPage(): React.JSX.Element {
                     </tr>
                   </thead>
                   <tbody>
-                    {activityQuery.data?.activity.map((entry) => (
+                    {activityQuery.data.activity.map((entry) => (
                       <tr key={entry.id}>
                         <td>
                           <strong>{entry.description}</strong>
-                          <span>{entry.type.replaceAll('_', ' ')}</span>
+                          <span>{activityTypeCopy[entry.type]}</span>
                         </td>
                         <td>{formatDate(entry.effectiveDate)}</td>
                         <td>
@@ -465,16 +612,50 @@ export function DashboardPage(): React.JSX.Element {
   );
 }
 
-function EmptyDashboard(): React.JSX.Element {
+function DashboardQueryFailure({
+  label,
+  error,
+  description,
+  onRetry,
+}: {
+  readonly label: string;
+  readonly error: unknown;
+  readonly description: string;
+  readonly onRetry: () => unknown;
+}): React.JSX.Element {
+  return (
+    <section className="dashboard-shell">
+      <div className="dashboard-heading">
+        <div>
+          <p className="eyebrow">Your dashboard</p>
+          <h1>Dashboard data needs another try.</h1>
+        </div>
+      </div>
+      <RetryableQueryError
+        label={label}
+        error={error}
+        description={description}
+        onRetry={onRetry}
+      />
+    </section>
+  );
+}
+
+function EmptyDashboard({ draftCount }: { readonly draftCount: number }): React.JSX.Element {
   return (
     <section className="dashboard-shell">
       <article className="empty-state spacious">
         <Target aria-hidden="true" />
         <p className="eyebrow">Your dashboard</p>
         <h1>Ready when you are.</h1>
-        <p>Create a goal to see the contribution baseline and compare four illustrative routes.</p>
+        <p>
+          {draftCount > 0
+            ? `You have ${String(draftCount)} saved ${draftCount === 1 ? 'draft' : 'drafts'} ready to resume.`
+            : 'Create a goal to see the contribution baseline and compare four illustrative routes.'}
+        </p>
         <Link className="button" to="/plan">
-          Build my first plan <ArrowRight aria-hidden="true" size={18} />
+          {draftCount > 0 ? 'Resume saved draft' : 'Build my first plan'}{' '}
+          <ArrowRight aria-hidden="true" size={18} />
         </Link>
       </article>
     </section>
@@ -496,9 +677,14 @@ function DashboardSkeleton(): React.JSX.Element {
 
 function DataControls(): React.JSX.Element {
   const [message, setMessage] = useState<string | null>(null);
+  const exportKeyRef = useRef<string | null>(null);
   const exportMutation = useMutation({
-    mutationFn: api.exportData,
+    mutationFn: () => {
+      exportKeyRef.current ??= crypto.randomUUID();
+      return api.exportData(exportKeyRef.current);
+    },
     onSuccess: (value) => {
+      exportKeyRef.current = null;
       const href = URL.createObjectURL(
         new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }),
       );
@@ -523,8 +709,9 @@ function DataControls(): React.JSX.Element {
         <p className="eyebrow">Your local data</p>
         <h2 id="data-controls-title">Export or delete your profile</h2>
         <p>
-          Exports include only your goals, plans, and activity. Deletion signs out every local
-          session.
+          Exports include your profile, saved drafts, goals and plans, simulated activity, and
+          Timing Lab history you own. Operational secrets and security records are excluded.
+          Deletion signs out every local session.
         </p>
       </div>
       <div className="data-actions">

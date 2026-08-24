@@ -3,18 +3,27 @@ import { fileURLToPath } from 'node:url';
 
 import { z } from 'zod';
 
+const booleanFlagSchema = z
+  .enum(['true', 'false'])
+  .default('false')
+  .transform((value) => value === 'true');
+
 const configurationSchema = z.object({
   ENVIRONMENT: z.enum(['local', 'test', 'staging', 'production']),
   NODE_ENV: z.enum(['development', 'test', 'production']),
   WEB_ORIGIN: z.url(),
   API_ORIGIN: z.url(),
   API_PORT: z.coerce.number().int().min(1).max(65_535),
+  API_BIND_HOST: z.enum(['127.0.0.1', '0.0.0.0']),
   DATABASE_URL: z.url().startsWith('postgres'),
   AUTH_MODE: z.enum(['local', 'external']),
   SESSION_SECRET: z.string().min(32),
   FINANCIAL_PROVIDER_MODE: z.enum(['simulated', 'provider']),
   APPLICATION_DATE: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']),
+  TEST_RATE_LIMIT_MAX: z.coerce.number().int().min(120).max(5_000).default(120),
+  DEMO_STORY_ENABLED: booleanFlagSchema,
+  PURCHASE_TIMING_LAB_ENABLED: booleanFlagSchema,
 });
 
 export type AppConfiguration = Readonly<z.infer<typeof configurationSchema>>;
@@ -38,6 +47,7 @@ export function loadConfiguration(environment: NodeJS.ProcessEnv = process.env):
   const inDevContainer = loaded['GOALPILOT_DEVCONTAINER'] === 'true';
   const selected = {
     ...loaded,
+    API_BIND_HOST: loaded['API_BIND_HOST'] ?? (inDevContainer ? '0.0.0.0' : '127.0.0.1'),
     DATABASE_URL: containerDatabaseUrl(
       loaded['ENVIRONMENT'] === 'test' && loaded['TEST_DATABASE_URL'] !== undefined
         ? loaded['TEST_DATABASE_URL']
@@ -46,6 +56,10 @@ export function loadConfiguration(environment: NodeJS.ProcessEnv = process.env):
     ),
   };
   const parsed = configurationSchema.parse(selected);
+  if (parsed.API_BIND_HOST === '0.0.0.0' && !inDevContainer)
+    throw new Error('API_BIND_HOST may expose all interfaces only inside the Dev Container.');
+  if (parsed.ENVIRONMENT !== 'test' && parsed.TEST_RATE_LIMIT_MAX !== 120)
+    throw new Error('TEST_RATE_LIMIT_MAX may be changed only for an isolated test process.');
   if (parsed.ENVIRONMENT === 'staging' || parsed.ENVIRONMENT === 'production')
     throw new Error('Local authentication is forbidden outside local/test.');
   if (parsed.AUTH_MODE !== 'local')
