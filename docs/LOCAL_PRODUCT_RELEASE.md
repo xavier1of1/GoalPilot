@@ -1,295 +1,270 @@
 # GoalPilot local product-experience release evidence
 
-> **FINAL EVIDENCE PENDING — 2026-08-24.** PX00–PX10 implementation is present, but the corrected
-> release procedure has not yet been completed against the exact manifest checkpoint recorded
-> below. The reserved release label is withheld. Earlier results are historical only; see
-> [RELEASE_AUDIT_2026-08-23.md](RELEASE_AUDIT_2026-08-23.md).
+> **AUTOMATED HARD GATE NOT PASSED — 2026-08-24.** The PX00–PX10 source checkpoint completed most
+> frozen-tree verification, including the canonical verification command. Installed-Chrome E2E,
+> the network-disabled non-root Dev Container probe, and a requirement-by-requirement product audit
+> did not pass. The reserved release label is therefore withheld.
 
-This record is for a local educational simulator. It cannot establish production readiness,
-financial compliance, AWS readiness/deployment, or human-validation outcomes.
+This record covers a local educational simulator. It does not establish production readiness,
+financial compliance, AWS readiness or deployment, or human-validation outcomes.
 
-## Release identity — current blocked checkpoint
+## Release identity
 
-| Field                    | Final evidence                                                                                                                                                                                                       |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Source checkpoint tested | Base commit `c28865c`; SHA-256 `52664405acb858188914f7c21354eda63bc41db6fee8cf9216d83adafba8fe00` over the sorted path/content manifest of 192 non-ignored files, excluding this file and `IMPLEMENTATION_STATUS.md` |
-| Working-tree/diff state  | Reviewed dirty checkpoint: 79 tracked changes and 57 untracked source/test/doc files; no conflicts; `git diff --check` passed                                                                                        |
-| Documentation checkpoint | **PENDING:** `.git` is read-only in the sandbox and the required commit approval was unavailable                                                                                                                     |
-| Verification time        | Partial evidence observed through 2026-08-24 06:06 EDT (`-04:00`)                                                                                                                                                    |
-| Product phase            | PX00–PX10 local-only product-experience phase                                                                                                                                                                        |
-| Application version      | `0.1.0`                                                                                                                                                                                                              |
-| Fixture/catalog versions | Source/current test evidence: `demo-2026-08-v1`, `product-experience-v1`, `vehicle-fit-v2`, `plan-health-v1`, `purchase-timing-v1`; final clean seed observation remains pending                                     |
-| Host toolchain           | Windows NT 10.0.26200.0; Node 24.19.0; pnpm 11.22.0; Git 2.53.0.windows.1; PowerShell 5.1.26100.9168; PostgreSQL 17.11; Docker client 27.5.1 / Compose 2.32.4 (engine access blocked)                                |
-| Browser                  | Installed stable Chrome `151.0.7922.170`; final Playwright run not executed                                                                                                                                          |
-| Evidence owner           | Codex independent local-release audit                                                                                                                                                                                |
+| Field                       | Frozen-tree evidence                                                                                                                                                                                          |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Source checkpoint tested    | Commit `e024fc22385f560327a3459d471194da08b0e9a8` (`feat: implement GoalPilot PX00-PX10 local product experience`)                                                                                            |
+| Implementation manifest     | SHA-256 `4f8eb8dfe8262e7d9ae158a22a53397e389038a32875b193ae9b5efe3e9dcb8c` over the canonical sorted path/content manifest of 192 implementation files; this file and `IMPLEMENTATION_STATUS.md` are excluded |
+| Working-tree state          | Clean after a single unpushed evidence-only documentation commit; local `master` is one commit ahead of `origin/master`, and no source, feature, test, or AWS file changed while recording these results      |
+| Product phase               | PX00–PX10, local only                                                                                                                                                                                         |
+| Application version         | `0.1.0`                                                                                                                                                                                                       |
+| Fixture and policy versions | `demo-2026-08-v1`, `product-experience-v1`, `vehicle-fit-v2`, `plan-health-v1`, and `purchase-timing-v1`                                                                                                      |
+| Host                        | Windows 11 Pro 10.0.26200, build 26200                                                                                                                                                                        |
+| Toolchain                   | Git 2.53; Node 24.19.0; pnpm 11.22.0; Docker client/server 27.5.1; Docker Compose 2.32.4; PostgreSQL 17.11                                                                                                    |
+| Browser                     | Installed stable Chrome 151.0.7922.170                                                                                                                                                                        |
+| Evidence owner              | Codex independent local-release audit                                                                                                                                                                         |
 
-The phrase **GoalPilot Local Product Experience verified** is a reserved label. Do not apply it
-unless every required row below is current, passing, and tied to the same source checkpoint.
+The phrase **GoalPilot Local Product Experience verified** is reserved. Do not apply it unless every
+required automated gate passes against one frozen source identity and no release-blocking in-scope
+finding remains.
+
+The implementation manifest is reproducible from the current local checkout because the two
+evidence documents are excluded. It frames each bytewise path-sorted entry as UTF-8 path, NUL,
+ASCII byte length, NUL, lowercase Git-blob SHA-256, and LF:
+
+```powershell
+node -e "const cp=require('node:child_process');const c=require('node:crypto');const excluded=new Set(['docs/LOCAL_PRODUCT_RELEASE.md','docs/IMPLEMENTATION_STATUS.md']);const paths=cp.execFileSync('git',['ls-tree','-r','--name-only','-z','HEAD'],{encoding:'buffer',maxBuffer:67108864}).toString('utf8').split('\0').filter(Boolean).filter(p=>!excluded.has(p)).sort((a,b)=>Buffer.compare(Buffer.from(a),Buffer.from(b)));const h=c.createHash('sha256');for(const p of paths){const b=cp.execFileSync('git',['show','HEAD:'+p],{encoding:'buffer',maxBuffer:67108864});const bh=c.createHash('sha256').update(b).digest('hex');h.update(Buffer.from(p,'utf8'));h.update(Buffer.from([0]));h.update(Buffer.from(String(b.length),'ascii'));h.update(Buffer.from([0]));h.update(Buffer.from(bh,'ascii'));h.update(Buffer.from('\n','ascii'));}console.log('files='+paths.length);console.log('sha256='+h.digest('hex'));"
+```
 
 ## Scope and intentional boundary
 
-The target topology is a React/Vite browser talking to a Fastify API and loopback PostgreSQL.
+The application is a React/Vite browser client, Fastify API, and loopback PostgreSQL database.
 Domain policy owns financial calculations; API routes validate and orchestrate; repositories enforce
 ownership and persistence; provider ports isolate local authentication, clock, rate-catalog,
-contribution, interest, and fixture-price simulators. The Story Demo clock is owner-scoped and never
-changes the operating-system clock.
+interest, and fixture-price behavior. The owner-scoped Story clock never changes the operating-system
+clock.
 
 - No real account is opened and no money is held, moved, invested, or used for a purchase.
 - Rates and price history are reviewed illustrative local fixtures, not live offers or retailer data.
-- Purchase Timing Lab supplies descriptive historical context, not a forecast or recommendation.
+- Purchase Timing Lab is descriptive, non-predictive, and fixture-only.
 - Human validation is a separate external gate and remains open.
-- AWS M19–M22 is not implemented, deployed, or authorized.
+- AWS M19–M22 and external providers remain unimplemented and unauthorized.
 
-## Source database inventory — not execution evidence
+## Database inventory and replay evidence
 
-The current source tree contains 17 ordered migration files:
+The frozen source contains 17 ordered immutable migrations, ending with
+`202608230017_price_check_worker_lease.sql`.
 
-1. `202608230001_local_mvp.sql`
-2. `202608230002_allow_ledger_cascade_purge.sql`
-3. `202608230003_financial_integrity.sql`
-4. `202608230004_relational_integrity.sql`
-5. `202608230005_ledger_semantic_integrity.sql`
-6. `202608230006_goal_drafts_and_plan_evolution.sql`
-7. `202608230007_controlled_clocks_fixtures_and_product_events.sql`
-8. `202608230008_purchase_timing_lab.sql`
-9. `202608230009_application_command_claims.sql`
-10. `202608230010_plan_calculation_context.sql`
-11. `202608230011_response_provenance.sql`
-12. `202608230012_purchase_timing_routine_events.sql`
-13. `202608230013_terminal_timing_provenance.sql`
-14. `202608230014_exact_timing_series.sql`
-15. `202608230015_reversal_aware_balances.sql`
-16. `202608230016_owner_financial_run_guard.sql`
-17. `202608230017_price_check_worker_lease.sql`
+| Database gate                                 | Result   | Frozen-tree evidence                                                                                                             |
+| --------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Development reset, migration replay, and seed | **PASS** | Clean guarded development replay and deterministic seed completed                                                                |
+| Schema verifier                               | **PASS** | 17 migrations, 25 public tables, 135 columns, 162 constraints, 19 triggers, 17 functions, 10 indexes, and 4 reviewed assumptions |
+| Previous-schema upgrade                       | **PASS** | Independent migration 005 → 017 upgrade suite: 1/1 test in 1.11 seconds                                                          |
+| Test database preparation                     | **PASS** | Canonical coverage/verify flow created, reset, migrated, and seeded the isolated test database before execution                  |
 
-This inventory does not prove successful replay, upgrade compatibility, checksum verification, or
-the resulting object counts. Record those only from the final database commands.
+## Final command record
 
-## Final command record — partial and blocked
+All package commands used the repository-pinned package manager through Corepack.
 
-Use the repository-pinned package manager through Corepack because the unrelated global
-`%APPDATA%\npm\pnpm.ps1` may be malformed. Replace each pending entry only with observed output from
-the frozen checkpoint; do not reuse an earlier run's count or timing.
+| Required command or check                     | Status           | Frozen-tree evidence                                                                                                          |
+| --------------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Record exact source identity and diff state   | **PASS**         | Commit and 192-file manifest above; worktree clean before the evidence-doc update                                             |
+| `corepack pnpm run setup` twice               | **PASS**         | Both complete setup runs passed                                                                                               |
+| `corepack pnpm run doctor`                    | **PASS**         | Node, pnpm, Docker, environment, database, and local/simulated-provider diagnostics passed                                    |
+| Development reset, migrate, seed, and verify  | **PASS**         | Clean replay and exact schema counts recorded above                                                                           |
+| Independent upgrade through migration 017     | **PASS**         | 1/1 test passed in 1.11 seconds                                                                                               |
+| `corepack pnpm test:unit`                     | **PASS**         | 29 files / 222 tests                                                                                                          |
+| PostgreSQL integration suite                  | **PASS**         | 7 files / 48 tests                                                                                                            |
+| `corepack pnpm test:coverage`                 | **PASS**         | 36 files / 270 tests; configured thresholds passed                                                                            |
+| `corepack pnpm verify`                        | **PASS**         | Canonical format, lint, type, coverage, build, database verification, security scan, registry audit, and SBOM chain completed |
+| `corepack pnpm build`                         | **PASS**         | 11 workspace projects; web 2,003 modules; JavaScript 461.86 kB / 137.04 kB gzip; CSS 32.06 kB / 7.85 kB gzip                  |
+| `corepack pnpm demo:reset`                    | **PASS**         | Seeded development demo reset completed                                                                                       |
+| `corepack pnpm product-events:summary`        | **PASS**         | Aggregate-only summary completed                                                                                              |
+| `corepack pnpm price-watch:run`               | **PASS**         | First run completed over 731 observations; a second same-date routine invocation safely returned `no_due`                     |
+| `corepack pnpm local:smoke`                   | **PASS**         | Production-built local smoke sequence completed                                                                               |
+| Local-release mode flag probe                 | **PASS**         | The `demoStory` and `purchaseTimingLab` capability flags were both false in local mode                                        |
+| Installed-Chrome `corepack pnpm test:e2e`     | **FAIL**         | 1/5 journeys passed; details below                                                                                            |
+| `corepack pnpm security:scan`                 | **PASS**         | No potential secret patterns detected                                                                                         |
+| `corepack pnpm audit:prod`                    | **PASS**         | Registry audit reported no vulnerabilities                                                                                    |
+| `corepack pnpm run sbom`                      | **PASS**         | CycloneDX 1.5, 432 components, 619,053 bytes; SHA-256 `e4040572ff67633ebf3921b6709db5353d3a175cc455dfcc4d716277d56cf9e9`      |
+| Dev Container image build                     | **PASS**         | Dockerfile image build completed with Docker client/server 27.5.1                                                             |
+| Dev Container network-disabled non-root probe | **FAIL**         | Corepack attempted to reach the package registry for pnpm; the image did not prove offline non-root toolchain reproducibility |
+| Owned-port cleanup                            | **PASS**         | GoalPilot release, demo, test, and browser listeners were closed after verification                                           |
+| Full VS Code Dev Container editor attach      | **NOT EXECUTED** | Optional evidence; no claim is made                                                                                           |
 
-| Required command or check                                   | Status           | Final measured evidence or limitation                                                                                                                           |
-| ----------------------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Record exact source checkpoint and reviewed diff            | **PASS (dirty)** | Base `c28865c`, 192-file manifest SHA-256 above; 79 tracked/57 untracked reviewed; diff check passed                                                            |
-| `corepack pnpm run setup` twice                             | **PARTIAL**      | `--preflight-only` passed twice with Node 24.19.0/pnpm 11.22.0; full Docker/DB setup blocked                                                                    |
-| `corepack pnpm run doctor`                                  | **BLOCKED**      | Docker client is installed, but sandbox access to the Docker engine/config is denied                                                                            |
-| `corepack pnpm db:reset -- --yes`                           | **BLOCKED**      | Required destructive approval for the guarded loopback target was unavailable                                                                                   |
-| `corepack pnpm db:migrate` and `corepack pnpm db:seed`      | **BLOCKED**      | Development DB intentionally left untouched after reset approval was denied                                                                                     |
-| Clean isolated-test replay                                  | **BLOCKED**      | Clean `goalpilot_test` reset approval was denied; no workaround was attempted                                                                                   |
-| Independent prior-schema upgrade through migration 017      | **BLOCKED**      | Final runtime-config change requires rerun; guarded temporary DB create/drop approval unavailable                                                               |
-| `corepack pnpm db:verify`                                   | **PASS (test)**  | 17 migrations, 25 tables, 135 columns, 162 constraints, 19 triggers, 17 functions, 10 indexes, 4 assumptions; development DB remains unverified/currently older |
-| `corepack pnpm format:check`                                | **PASS**         | All matched files use Prettier style                                                                                                                            |
-| `corepack pnpm lint`                                        | **PASS**         | Workspace ESLint completed with zero warnings                                                                                                                   |
-| `corepack pnpm typecheck`                                   | **PASS**         | Root and 11 workspace project checks passed                                                                                                                     |
-| `corepack pnpm test:unit`                                   | **PASS**         | 29 files / 222 tests                                                                                                                                            |
-| Focused affected PostgreSQL API suites                      | **PASS**         | `auth-goals` 7/7 and `product-experience` 7/7 against the existing isolated test DB                                                                             |
-| `corepack pnpm test:coverage`                               | **BLOCKED**      | Requires the clean test reset whose approval was denied; no final coverage claim                                                                                |
-| `corepack pnpm build`                                       | **PASS**         | 11 workspace projects; web 2,003 modules, JS 461.86 kB/137.04 kB gzip                                                                                           |
-| `corepack pnpm verify`                                      | **BLOCKED**      | Requires clean test reset and registry audit access; neither was available                                                                                      |
-| Installed-Chrome `corepack pnpm test:e2e`                   | **BLOCKED**      | Chrome 151.0.7922.170 found; clean test reset/browser execution approval unavailable                                                                            |
-| `corepack pnpm demo:reset`                                  | **BLOCKED**      | Development DB reset/migrate/seed gate did not run                                                                                                              |
-| `corepack pnpm product-events:summary`                      | **PASS (test)**  | Aggregate-only output: builder started 4, builder step 1, Timing completed 5/failed 4/no-due 4; final development seed remains pending                          |
-| `corepack pnpm price-watch:run`                             | **BLOCKED**      | Final seeded development database is unavailable                                                                                                                |
-| `corepack pnpm local:release` mode probe                    | **BLOCKED**      | Development DB is older than the source schema; foreground runtime was not started                                                                              |
-| `corepack pnpm demo:local` plus `corepack pnpm local:smoke` | **BLOCKED**      | Development DB/Docker approvals unavailable; no process was started                                                                                             |
-| `corepack pnpm security:scan`                               | **PASS**         | No potential secret patterns detected                                                                                                                           |
-| `corepack pnpm audit:prod`                                  | **BLOCKED**      | Registry POST failed with sandbox `EACCES` after documented retries                                                                                             |
-| `corepack pnpm run sbom`                                    | **PASS**         | CycloneDX 1.5, 432 components, `artifacts/sbom.cdx.json`, SHA-256 `55bb1d19031e30e088655a07c358ff1042de199c382cc1b9f1df35c3f2106491`                            |
-| Dev Container image build                                   | **BLOCKED**      | Docker engine pipe access denied by the sandbox                                                                                                                 |
-| Dev Container non-root runtime probe                        | **BLOCKED**      | Docker engine pipe access denied by the sandbox                                                                                                                 |
-| Full VS Code Dev Container editor attach                    | **NOT EXECUTED** | Optional evidence; not claimed                                                                                                                                  |
+## Test and coverage evidence
 
-## Test and coverage evidence — partial
+| Coverage group | Statements | Branches | Functions |  Lines | Result   |
+| -------------- | ---------: | -------: | --------: | -----: | -------- |
+| Overall        |     73.95% |   69.85% |    75.45% | 75.98% | **PASS** |
+| API            |     85.90% |   75.47% |      100% | 89.36% | **PASS** |
+| Data access    |     87.89% |   75.20% |    95.65% | 90.95% | **PASS** |
+| Domain         |     95.49% |   92.69% |      100% | 97.24% | **PASS** |
 
-Record the executed current suite, not the prior tree's totals.
+The coverage run executed 36 files / 270 tests. The DB-free unit suite separately executed 29 files /
+222 tests, and the PostgreSQL integration suite executed 7 files / 48 tests.
 
-| Coverage group |  Statements |    Branches |   Functions |       Lines | Required floor          | Result      |
-| -------------- | ----------: | ----------: | ----------: | ----------: | ----------------------- | ----------- |
-| API            | **PENDING** | **PENDING** | **PENDING** | **PENDING** | Record configured floor | **PENDING** |
-| Data access    | **PENDING** | **PENDING** | **PENDING** | **PENDING** | Record configured floor | **PENDING** |
-| Domain         | **PENDING** | **PENDING** | **PENDING** | **PENDING** | Record configured floor | **PENDING** |
+Passing aggregate coverage does not close the direct assertion and rendered-state gaps identified
+by the requirement audit below.
 
-- Executed DB-free Vitest count: **29 files / 222 tests passed**.
-- Executed affected PostgreSQL API count: **2 files / 14 tests passed** against the existing
-  isolated test database; this is not a substitute for the blocked clean integration suite.
-- Final coverage file/test count and percentages: **BLOCKED/PENDING**.
-- Exclusions and threshold configuration reviewed against the manifest checkpoint: **PASS**;
-  `**/*.test.{ts,tsx}` is excluded from source coverage, and the configured API/data/domain floors
-  remain active (including 90% domain branches).
-- Required financial, security/ownership, immutable ledger/plan, idempotency, controlled-clock,
-  Autopilot, Timing provenance/replay, provider-boundary, privacy, and migration regressions present
-  in source: **PASS by review**; complete clean execution: **BLOCKED/PENDING**.
+## Browser, accessibility, and responsive evidence
 
-## Browser, accessibility, and responsive evidence — blocked
+The final installed-Chrome run used Chrome 151.0.7922.170 and finished **1/5 journeys passing**.
 
-| Journey or check                                | Status      | Final evidence                                                                |
-| ----------------------------------------------- | ----------- | ----------------------------------------------------------------------------- |
-| A — progressive plan and activation             | **BLOCKED** | Final installed-Chrome run requires the unavailable clean test reset approval |
-| B — disruption, recovery, and immutable history | **BLOCKED** | Final installed-Chrome run requires the unavailable clean test reset approval |
-| C — Autopilot, reset, completion, and archive   | **BLOCKED** | Final installed-Chrome run requires the unavailable clean test reset approval |
-| D — Purchase Timing Lab and exact replay        | **BLOCKED** | Final installed-Chrome run requires the unavailable clean test reset approval |
-| E — ownership and privacy-safe telemetry        | **BLOCKED** | Final installed-Chrome run requires the unavailable clean test reset approval |
-| Axe on required customer states                 | **BLOCKED** | Final browser execution not authorized                                        |
-| Horizontal overflow                             | **BLOCKED** | Final browser execution not authorized                                        |
-| Keyboard and focus                              | **BLOCKED** | Component regressions passed; final browser execution not authorized          |
-| Reduced motion                                  | **BLOCKED** | Component regressions passed; final browser execution not authorized          |
-| Chart alternative                               | **BLOCKED** | Component regressions passed; final browser execution not authorized          |
-| Background failures                             | **BLOCKED** | Cross-page collector exists; no final browser run is claimed                  |
+| Journey or check                              | Status         | Final evidence                                                                                                                                        |
+| --------------------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A — progressive plan and activation           | **FAIL**       | The harness timed out draining tracked requests; trace-based diagnosis attributes the retained entries to requests abandoned by deliberate navigation |
+| B — disruption and recovery                   | **FAIL**       | A real `plan_changed` ledger row caused the ledger response to return HTTP 500 because the activity response contract omits that valid entry type     |
+| C — Autopilot and completion                  | **FAIL**       | The harness timed out draining tracked requests; trace-based diagnosis attributes the retained entries to requests abandoned by deliberate reload     |
+| D — Purchase Timing Lab                       | **FAIL**       | The harness timed out draining a tracked request; trace-based diagnosis attributes the retained entry to a request abandoned by deliberate reload     |
+| E — ownership and privacy                     | **PASS**       | The ownership/privacy journey completed                                                                                                               |
+| Axe, keyboard, focus, and responsive coverage | **NOT PASSED** | The suite did not complete all critical journeys; the static audit also found incomplete form-error semantics described below                         |
+| Background-failure disposition                | **FAIL**       | A/C/D require a harness correction and clean rerun so intentionally abandoned navigation requests are distinguished from application failures         |
 
-Automated Axe checks cannot substitute for participant or assistive-technology validation.
+The A/C/D failures may originate in tracker classification, but a failed harness cannot prove the
+underlying journey. Journey B exposed an application contract defect rather than a harness-only
+failure. Automated Axe checks cannot substitute for participant or assistive-technology validation.
 
-## Performance evidence — focused checks executed
+## Security, privacy, and supply-chain evidence
 
-These are local regression budgets, not production service-level objectives.
+- The canonical verification chain, secret scan, production registry audit, and SBOM generation
+  passed.
+- The clean PostgreSQL suites and schema verifier passed ownership, relational-integrity,
+  immutability, idempotency, controlled-clock, privacy, and fixture-boundary tests included in their
+  executed scope.
+- The installed-Chrome ownership/privacy journey passed.
+- These results do not override the failed complete E2E gate or the open requirement-audit findings.
 
-| Operation                         | Measured result | Documented budget | Status   |
-| --------------------------------- | --------------: | ----------------: | -------- |
-| Stateless plan preview p95        |         39.9 ms |         <1,000 ms | **PASS** |
-| What-If preview                   |         69.7 ms |         <1,000 ms | **PASS** |
-| 731-observation Timing assessment |        410.6 ms |         <5,000 ms | **PASS** |
-| Owner-scoped six-month Autopilot  |      2,922.6 ms |        <10,000 ms | **PASS** |
+## Independent requirement audit — open findings
 
-The plan-preview p95 used 20 sequential Fastify `inject` requests; an additional authenticated
-goals-GET p95 measured 5.3 ms over 20 requests. The other values are one measured local integration
-sample each, enforced by `app.test.ts`, `auth-goals.integration.test.ts`, and
-`product-experience.integration.test.ts`; they are regression ceilings, not distribution/SLO claims.
+The read-only audit compared the source and rendered behavior requirements with implementation,
+rather than treating green aggregate commands as proof of every product outcome. The earlier claim
+that no in-scope High or Medium finding remained is superseded by this ledger.
 
-## Security, privacy, and supply-chain evidence — partial
+### High — seeded Timing Lab readiness is tied to an unrelated goal
 
-- Authentication, session, CSRF, Origin, rate-limit, validation, and idempotency regressions:
-  **PASS in unit/focused API suites; full clean-suite proof is blocked**.
-- Cross-owner draft, goal, plan/history/scenario, demo, and Timing denial matrix: **present and
-  partly exercised; full clean-suite proof is blocked**.
-- Append-only ledger, immutable plan/catalog/event/price/assessment, and reversal semantics:
-  **schema verifier passed; final clean database suite is blocked**.
-- Terminal-goal mutation guards and Timing/Autopilot provenance: **focused tests passed**.
-- Product-event vocabulary, pseudonymization, field/value rejection, and aggregate-only reporting:
-  **unit tests and aggregate-only test-database CLI output passed; final development output is
-  blocked**.
-- Safe error/logging correlation, redaction, and non-disclosure: **unit tests passed**.
-- Privacy export/deletion, retained-audit pseudonymization, and owned Planning/Timing cleanup:
-  **source/regressions reviewed; final clean database execution is blocked**.
-- Secret scan: **PASS**. CycloneDX SBOM: **PASS**. Production dependency audit: **BLOCKED** by
-  registry-network `EACCES`; no vulnerability result is claimed.
+- **Evidence:** `scripts/demo-fixture.ts:38`, `scripts/demo-fixture.ts:44`, and
+  `scripts/demo-fixture.ts:268`–`274` associate the $1,500 synthetic 65-inch OLED item with the
+  $9,000 Japan-trip goal.
+- **Impact:** Purchase Timing readiness is derived from that unrelated goal's Plan Health, so the
+  primary seeded PX09 question does not truthfully answer whether the user is financially ready for
+  the illustrated television purchase.
+- **Required correction:** give the Timing item a semantically matching plan/readiness source, then
+  rerun its database, API, UI, and Journey D evidence.
 
-## Independent review disposition
+### High — valid plan history breaks the activity API and Journey B
 
-The source audit covered product hierarchy, financial correctness, data integrity,
-authentication/ownership/privacy, provider boundaries, API contracts and logging, React failure and
-accessibility states, test false-positive risks, setup, and release reproducibility. Corrections and
-regression tests are present in the working tree, but their final aggregate proof remains pending.
-The last independent static pass found no remaining in-scope High or Medium product-code,
-security, financial, or privacy defect. It closed final owner-wide Autopilot high-water and Timing
-worker-row race findings before this checkpoint. This is a static disposition, not a substitute for
-the blocked aggregate gates.
-The historical discovery/correction narrative is preserved in
-[RELEASE_AUDIT_2026-08-23.md](RELEASE_AUDIT_2026-08-23.md).
+- **Evidence:** scenario application writes a valid `plan_changed` ledger entry in
+  `packages/data-access/src/plan-experience-repository.ts:683`, while
+  `packages/contracts/src/index.ts:458`–`470` omits `plan_changed` from the normal activity response
+  enum. Journey B receives HTTP 500 when it reads the true ledger.
+- **Impact:** disruption/recovery cannot demonstrate immutable history through the required browser
+  flow.
+- **Required correction:** align the activity contract and UI with the valid ledger vocabulary and
+  add a regression that reads activity after applying a plan change.
 
-### Final finding ledger (ordered by severity)
+### Medium — an intentional missed contribution is reported as a duplicate
 
-#### High — release proof and local commits remain blocked (open)
+- **Evidence:** `packages/data-access/src/repository.ts:1411`–`1437` records an intentional omission
+  as `posted: false`; `apps/api/src/demo-autopilot.ts:97`–`103` counts every such result as
+  `skippedDuplicates`; `apps/api/src/app.ts:2053`–`2055` maps it to `ALREADY_PROCESSED`.
+- **Impact:** Story Mode explains the planned disruption as replay/duplicate behavior, and Journey B
+  does not advance through and verify the required missed-event narrative.
+- **Required correction:** return and map a distinct planned-missed outcome, render its explanation,
+  and cover first execution separately from replay.
 
-- **Evidence/files:** this record and `docs/IMPLEMENTATION_STATUS.md` retain the hard gate and label
-  as blocked/withheld.
-- **Reproduction:** `corepack pnpm run doctor` passes Node, pnpm, environment, database, and provider
-  checks but reports `Docker: engine unavailable`; `corepack pnpm audit:prod` fails registry access
-  with `EACCES`; guarded reset and `git add` approvals are rejected by the exhausted approval
-  service.
-- **Requirement impact:** the mandatory clean replay, coverage/verify, installed-Chrome, smoke,
-  Dev Container, dependency-audit, and small-local-commit evidence cannot be claimed.
-- **Recommended correction:** explicitly authorize the scoped reset/browser/Docker/Git operations
-  when approval capacity is available, permit registry advisory access, then execute the frozen-tree
-  command sequence and update this record. No product-code workaround is acceptable.
+### Medium — the result hierarchy does not keep the safe amount primary
 
-#### Medium — owner-wide Story recovery high-water was goal-local (corrected)
+- **Evidence:** `apps/web/src/pages/BuilderPage.tsx:924`–`930` headlines the chosen contribution;
+  the zero-interest safe amount appears second at approximately line 958. The fixture chooses
+  $400.50 while the safe amount is $416.67.
+- **Impact:** the mandatory safe-primary policy can be read as recommending the below-safe chosen
+  amount.
+- **Required correction:** lead the decision-ready result with the zero-interest safe commitment and
+  clearly subordinate the user's chosen amount and modeled-interest effects.
 
-- **File:** `packages/data-access/src/experience-repository.ts:817`.
-- **Reproduction:** give one demo owner two accounts, leave a future financial row on a terminal
-  sibling, then request a relative milestone for the other active goal. The earlier goal-local query
-  could skip the pending day and overshoot.
-- **Requirement impact:** PX07 controlled-clock recovery could expose financial state ahead of the
-  owner clock.
-- **Correction:** calculate the greatest financial high-water across every owner account while
-  retaining requested-goal eligibility; add query-structure and terminal-sibling regressions.
+### Medium — required comparison information is incomplete
 
-#### Medium — expired Timing worker could report a fabricated failure (corrected)
+- **Evidence:** eligible non-selected cards have no explicit fit state in
+  `apps/web/src/pages/BuilderPage.tsx:1001`–`1010`; the ineligible branch near lines 1015–1162 hides
+  safe contribution, benefit-versus-cash, readiness, access, and maturity/lock metrics.
+- **Impact:** PX03 does not let the user compare all four vehicles using the required common fields
+  and rationale.
+- **Required correction:** render a deterministic fit state and common comparison fields for every
+  card, while retaining the exact rejection and required change.
 
-- **File:** `packages/data-access/src/purchase-timing-repository.ts:639`.
-- **Reproduction:** pause an expired-claim reader after selecting the row, complete it with the old
-  worker, then resume the reader. Without a row lock its conditional transition could affect zero
-  rows while returning `PROVIDER_FAILURE`.
-- **Requirement impact:** PX09 routine status and privacy-safe outcome telemetry could contradict the
-  immutable database result.
-- **Correction:** lock the existing run before reading its lease/status and retain token-CAS
-  transitions; add focused lock/reclaim coverage.
+### Medium — What-If comparison omits the changed deadline and target
 
-#### Medium — schema verifier rejected valid PostgreSQL catalog forms (corrected)
+- **Evidence:** `apps/web/src/components/PlanWorkspace.tsx:601`–`670` does not show current and
+  proposed deadline or target amount.
+- **Impact:** DEADLINE and TARGET scenarios do not fully expose the exact one-variable change
+  required by PX05.
+- **Required correction:** include both current/proposed values with their deltas and rationale.
 
-- **Files:** `scripts/db-verify.ts:239`, `scripts/db-verify.ts:644`, and
-  `tests/db-verify.test.ts`.
-- **Reproduction:** run the verifier against migration 017; PostgreSQL renders `IN (...)` as
-  `= ANY (ARRAY[...])`, and obsolete pre-014 constraint expectations consumed/re-required replaced
-  checks.
-- **Requirement impact:** a correct 17-migration database failed the release gate, creating a false
-  drift report.
-- **Correction:** verify canonical catalog material, remove superseded duplicate requirements, and
-  add normalized-catalog regressions. The verifier now passes with exact object counts.
+### Medium — Story Mode omits required schedule and failure explanations
 
-#### Medium — Dev Container test/upgrade URLs bypassed the bridge policy (corrected)
+- **Evidence:** the Story panel in `apps/web/src/components/PlanWorkspace.tsx:793` onward does not
+  render the next scheduled event or next maturity even though `nextEventDate` exists in the
+  contract; contribution-specific failure and HTTP replay explanations are not wired to the UI.
+- **Impact:** PX07 does not provide the required understandable simulation status and failure paths.
+- **Required correction:** expose upcoming event/maturity state and distinct failed, planned-missed,
+  replay, locked, and no-event explanations.
 
-- **Files:** `scripts/runtime-config.ts:25`, `scripts/db-test-create.ts:15`, and
-  `tests/migration-upgrade.integration.test.ts:94`.
-- **Reproduction:** set `GOALPILOT_DEVCONTAINER=true` with documented localhost URLs; runtime paths
-  used `host.docker.internal`, while test creation/upgrade still attempted container loopback.
-- **Requirement impact:** documented setup and isolated database proof were not reproducible inside
-  the Dev Container.
-- **Correction:** centralize the explicitly gated rewrite for both URLs, keep exact database-name and
-  identity guards, reject the bridge outside container mode, and add DB-free safety tests.
+### Medium — Timing rationale and target purchase date are incomplete
 
-#### Low — plan-preview p95 evidence omitted the measured value (corrected)
+- **Evidence:** assessment `rationaleCodes` exist in `packages/contracts/src/index.ts` around line
+  1721, but `TimingLabPanel` does not render them; the Timing assessment/UI model has no target
+  purchase date.
+- **Impact:** PX09 does not fully explain the deterministic state or put price history in the
+  requested purchase-date context.
+- **Required correction:** model and render the target purchase date and allowlisted rationale copy,
+  preserving the separate readiness gate and non-prediction language.
 
-- **File:** `apps/api/src/app.test.ts:539`.
-- **Reproduction:** run the test; the prior assertion enforced the ceiling but printed no observed
-  p95 for release evidence.
-- **Requirement impact:** the performance row could not be filled without inventing a value.
-- **Correction:** emit the 20-sample p95 and ceiling; the latest measured value is recorded above.
+### Medium — critical builder errors lack complete accessible association
 
-## Known limitations and external gates
+- **Evidence:** goal, target, date, and current-savings errors in
+  `apps/web/src/pages/BuilderPage.tsx:674`–`738` lack the complete `aria-invalid`,
+  `aria-describedby`, alert association, first-invalid focus, and multi-error summary used for the
+  budget field.
+- **Impact:** the PX01 critical path does not meet the mandate's error accessibility requirements.
+- **Required correction:** implement and test consistent field associations, error summary, and
+  first-invalid focus across builder steps.
 
-- Human validation is an **OPEN external gate**; no participant session or outcome is claimed.
-- The platform approval service denied clean database reset, installed-Chrome/server execution,
-  Docker-engine access, and `.git` index writes after its approval quota was exhausted. The smallest
-  human action is to explicitly authorize those scoped operations when approval capacity is
-  available; no workaround was attempted.
-- The registry dependency audit failed with sandbox `EACCES` after its normal retries. It requires
-  approved registry access; no audit result is inferred from the failure.
-- The development database remains on its prior schema because the guarded reset/migrate/seed gate
-  was not authorized. Only the existing isolated test database was read/used by focused tests.
-- A recovered indeterminate Story command deliberately returns 409 after advancing only through the
-  durable owner-wide pending high-water. The original key remains non-replayable; the user must
-  refresh and intentionally start a new milestone. This favors no duplicate financial history over
-  availability after a process crash.
-- `pnpm` native command-name collisions require `corepack pnpm run setup`, `run doctor`, and
-  `run sbom`; bare `pnpm setup`/`doctor`/`sbom` do not invoke repository scripts.
-- A full VS Code editor attach is optional evidence and is not claimed unless executed.
-- This remains a local educational simulator using deterministic fixture data.
-- There is no real money movement, provider credential, live rate/price feed, personalized financial
-  advice, compliance approval, production operation, public deployment, or AWS implementation.
+### Medium — rationale and rendered-state tests are incomplete
 
-## Release decision — blocked
+- **Evidence:** decision-summary branches in `apps/api/src/app.ts:234`–`259` lack direct assertions
+  for safe-relation, access/lock, modeled-interest cushion, and readiness rationale codes; required
+  rendered interface states are not exhaustively covered.
+- **Impact:** aggregate coverage can pass while mandatory deterministic explanations or failure
+  states regress.
+- **Required correction:** add exact branch assertions and component/E2E coverage for the missing
+  states without weakening thresholds.
 
-- Product-experience automated hard gate: **BLOCKED / NOT PASSED**.
+## Process and reproducibility deviations
+
+- The reflog for `refs/remotes/origin/master` records `update by push` to
+  `e024fc22385f560327a3459d471194da08b0e9a8` at 2026-08-24 07:49:07 -0400 despite the mandate's
+  explicit **do not push** instruction. Local evidence does not identify the actor or mechanism.
+  Local `master` now contains one additional unpushed evidence-only documentation commit; no further
+  push, history rewrite, or remote mutation was performed while producing this record.
+- The Dev Container image builds, but its required network-disabled non-root probe fails because
+  Corepack attempts registry access for pnpm. A full editor attach remains optional and unexecuted.
+- Browser A/C/D tracker failures must be corrected and rerun; they cannot be reclassified as passes
+  from static inspection.
+- Human validation remains an open external gate; no participant result is claimed.
+
+## Release decision — withheld
+
+- Product-experience automated hard gate: **NOT PASSED**.
 - Reserved release label applied: **NO — WITHHELD**.
-- Decision checkpoint: dirty manifest checkpoint recorded above; local commit unavailable.
-- Rationale: source review and every available non-destructive gate passed, but clean database,
-  coverage/canonical verify, installed-Chrome, Docker, local smoke, dependency-audit, and commit
-  evidence remain blocked. The reserved label therefore remains withheld.
+- Source checkpoint: `e024fc22385f560327a3459d471194da08b0e9a8` and canonical implementation
+  manifest `4f8eb8dfe8262e7d9ae158a22a53397e389038a32875b193ae9b5efe3e9dcb8c`.
+- Rationale: database, coverage, canonical verification, build, security, registry audit, SBOM,
+  local smoke, and cleanup evidence passed. Chrome completed only 1/5 journeys; Journey B exposed a
+  real response-contract defect; the independent audit found open High and Medium product and
+  accessibility gaps; the offline non-root Dev Container probe failed; and the no-push mandate was
+  breached.
 
-After the final gates, fill the exact source/diff checkpoint, verification timestamp, observed
-environment and Chrome build, all database/test/coverage counts, journey outcomes and durations,
-background failure disposition, performance measurements, security/audit/SBOM results, smoke/port
-cleanup, Dev Container results, and final decision. Do not change the decision or apply the reserved
-label unless every required gate passes.
+The next in-scope task is to correct only these release findings, refreeze the source, and rerun the
+complete affected tests, canonical verification, installed-Chrome Journeys A–E, accessibility and
+viewport checks, local smoke, and offline non-root Dev Container probe. Do not begin AWS/M19 or add
+external providers.
