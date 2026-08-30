@@ -36,7 +36,7 @@
     "@goalpilot/observability": "workspace:*",
     "@goalpilot/provider-ports": "workspace:*",
     "@goalpilot/provider-simulators": "workspace:*",
-    "fastify": "5.11.3",
+    "fastify": "5.12.1",
     "fastify-type-provider-zod": "7.0.0",
     "pino": "10.3.1",
     "ulid": "3.0.2",
