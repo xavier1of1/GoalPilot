@@ -14,7 +14,7 @@ financial compliance, AWS readiness or deployment, or human-validation outcomes.
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Source checkpoint tested    | Commit `e024fc22385f560327a3459d471194da08b0e9a8` (`feat: implement GoalPilot PX00-PX10 local product experience`)                                                                                            |
 | Implementation manifest     | SHA-256 `4f8eb8dfe8262e7d9ae158a22a53397e389038a32875b193ae9b5efe3e9dcb8c` over the canonical sorted path/content manifest of 192 implementation files; this file and `IMPLEMENTATION_STATUS.md` are excluded |
-| Working-tree state          | Clean after a single unpushed evidence-only documentation commit; local `master` is one commit ahead of `origin/master`, and no source, feature, test, or AWS file changed while recording these results      |
+| Working-tree state          | Implementation files remain unchanged; this document and `IMPLEMENTATION_STATUS.md` contain an uncommitted evidence-only correction after repository automation unexpectedly pushed the docs checkpoint       |
 | Product phase               | PX00–PX10, local only                                                                                                                                                                                         |
 | Application version         | `0.1.0`                                                                                                                                                                                                       |
 | Fixture and policy versions | `demo-2026-08-v1`, `product-experience-v1`, `vehicle-fit-v2`, `plan-health-v1`, and `purchase-timing-v1`                                                                                                      |
@@ -242,10 +242,14 @@ that no in-scope High or Medium finding remained is superseded by this ledger.
 ## Process and reproducibility deviations
 
 - The reflog for `refs/remotes/origin/master` records `update by push` to
-  `e024fc22385f560327a3459d471194da08b0e9a8` at 2026-08-24 07:49:07 -0400 despite the mandate's
-  explicit **do not push** instruction. Local evidence does not identify the actor or mechanism.
-  Local `master` now contains one additional unpushed evidence-only documentation commit; no further
-  push, history rewrite, or remote mutation was performed while producing this record.
+  `e024fc22385f560327a3459d471194da08b0e9a8` at 2026-08-24 07:49:07 -0400 and again to the
+  evidence-only documentation commit `db7cdd9774873837feabfcc647dc840ade442d12` at 2026-08-24
+  08:36:13 -0400 despite the mandate's explicit **do not push** instruction. The second update
+  happened immediately after a local `git commit --amend`; no `git push` command was issued by this
+  verification run, no active hook explains it, and local evidence does not identify the external
+  automation or actor. This subsequent evidence-only wording correction is intentionally left
+  uncommitted to avoid triggering another automatic push. No history rewrite or compensating remote
+  mutation was attempted.
 - The Dev Container image builds, but its required network-disabled non-root probe fails because
   Corepack attempts registry access for pnpm. A full editor attach remains optional and unexecuted.
 - Browser A/C/D tracker failures must be corrected and rerun; they cannot be reclassified as passes
