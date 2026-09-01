@@ -37,8 +37,9 @@ Historical production bundles were web JavaScript 409.27 kB (124.47 kB gzip) and
 The frozen local product-experience implementation is commit
 `e024fc22385f560327a3459d471194da08b0e9a8`. Its canonical 192-file implementation manifest is
 SHA-256 `4f8eb8dfe8262e7d9ae158a22a53397e389038a32875b193ae9b5efe3e9dcb8c`. The worktree was clean
-before the evidence-only updates to this file and `LOCAL_PRODUCT_RELEASE.md`; those updates are now
-one unpushed local documentation commit ahead of `origin/master`.
+before the evidence-only updates to this file and `LOCAL_PRODUCT_RELEASE.md`. Repository automation
+unexpectedly pushed the evidence-only documentation commit; these two files now contain a later
+uncommitted evidence correction, while all implementation files remain unchanged.
 
 The source provides progressive baseline-first planning, saved drafts, deterministic plan and
 vehicle calculations, plan health, What-If/recovery versions, history/archive views, owner-scoped
@@ -115,10 +116,13 @@ impact, and required corrections are recorded in
 ## Process and reproducibility blockers
 
 - The `refs/remotes/origin/master` reflog records `update by push` to
-  `e024fc22385f560327a3459d471194da08b0e9a8` at 2026-08-24 07:49:07 -0400 despite the mandate's
-  explicit no-push instruction. Local evidence does not identify its actor or mechanism. Local
-  `master` now contains one unpushed evidence-only documentation commit; no further push or history
-  mutation was performed while recording this status.
+  `e024fc22385f560327a3459d471194da08b0e9a8` at 2026-08-24 07:49:07 -0400 and to the evidence-only
+  documentation commit `db7cdd9774873837feabfcc647dc840ade442d12` at 2026-08-24 08:36:13 -0400,
+  despite the mandate's explicit no-push instruction. The latter followed a local
+  `git commit --amend`; this verification run issued no `git push`, and no active repository hook
+  explains the update. The external automation or actor remains unidentified. This later
+  evidence-only correction is intentionally uncommitted to avoid another automatic push; no history
+  rewrite or compensating remote mutation was attempted.
 - Chrome A/C/D cannot be counted as product passes until the background tracker distinguishes
   navigation-abandoned requests from application failures and the journeys pass on rerun.
 - The Dev Container must make the pinned pnpm toolchain available to the non-root user without
