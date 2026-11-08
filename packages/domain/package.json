@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@goalpilot/contracts": "workspace:*",
-    "date-fns": "4.1.0",
+    "date-fns": "4.4.0",
     "decimal.js": "10.6.0"
   },
   "devDependencies": {
